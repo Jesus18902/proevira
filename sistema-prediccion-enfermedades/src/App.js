@@ -13,9 +13,11 @@ import Analisis from './pages/Analisis';
 import ModelosPredictivos from './pages/ModelosPredictivos';
 import Reportes from './pages/Reportes';
 import Configuracion from './pages/Configuracion';
+import Alertas from './pages/Alertas';
 // import Formulario de Riesgo de Brote (si es necesario en alguna ruta)
 import RiesgoBroteForm from './pages/RiesgoBroteForm';
 import PrediccionAvanzada from './pages/PrediccionAvanzada';
+import DashboardPredicciones from './pages/DashboardPredicciones';
 
 // Componente para rutas protegidas
 const ProtectedRoute = ({ children }) => {
@@ -50,7 +52,9 @@ function App() {
                     {/* <Route path="/modelos" element={<ModelosPredictivos />} /> */}
                     <Route path="/modelos" element={<RiesgoBroteForm />} />
                     <Route path="/prediccion-avanzada" element={<PrediccionAvanzada />} />
+                    <Route path="/dashboard-predicciones" element={<DashboardPredicciones />} />
                     <Route path="/reportes" element={<Reportes />} />
+                    <Route path="/alertas" element={<Alertas />} />
                     <Route path="/configuracion" element={<Configuracion />} />
                   </Routes>
                 </div>

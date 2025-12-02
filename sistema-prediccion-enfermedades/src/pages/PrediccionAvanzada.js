@@ -5,6 +5,8 @@
 import React, { useState, useEffect } from 'react';
 import { datosService, modeloService } from '../services/api';
 
+const API_URL = 'http://localhost:5001/api';
+
 const PrediccionAvanzada = () => {
     const [regiones, setRegiones] = useState([]);
     const [loadingRegiones, setLoadingRegiones] = useState(true);
@@ -19,6 +21,8 @@ const PrediccionAvanzada = () => {
     const [error, setError] = useState(null);
     const [resumenModelo, setResumenModelo] = useState(null);
     const [metricsValidacion, setMetricsValidacion] = useState(null);
+    const [guardando, setGuardando] = useState(false);
+    const [mensajeGuardado, setMensajeGuardado] = useState(null);
 
     // Cargar regiones
     useEffect(() => {
@@ -162,6 +166,69 @@ const PrediccionAvanzada = () => {
         if (errorPct <= 25) return 'text-yellow-600 bg-yellow-50';
         if (errorPct <= 50) return 'text-orange-600 bg-orange-50';
         return 'text-red-600 bg-red-50';
+    };
+
+    // Función para guardar predicción en la base de datos
+    const guardarPrediccion = async () => {
+        if (predicciones.length === 0) {
+            setError('No hay predicciones para guardar');
+            return;
+        }
+
+        setGuardando(true);
+        setMensajeGuardado(null);
+
+        try {
+            const estadoNombre = regiones.find(r => r.id === parseInt(formData.id_region))?.nombre || 'Desconocido';
+            
+            // Preparar datos para guardar
+            const datosGuardar = {
+                estado: estadoNombre,
+                id_region: parseInt(formData.id_region),
+                fecha_inicio: formData.fecha_inicio,
+                numero_semanas: parseInt(formData.semanas_prediccion),
+                predicciones: predicciones.map(p => ({
+                    semana: p.semana,
+                    fecha: p.fecha,
+                    casos_estimados: p.prediccion?.casos_proxima_semana || p.datos_utilizados?.casos_ultima_semana || 0,
+                    nivel_riesgo: getNivelRiesgo(p.riesgo_probabilidad).nivel,
+                    probabilidad: p.riesgo_probabilidad
+                })),
+                validacion: formData.modo_validacion ? predicciones.filter(p => p.validacion).map(p => ({
+                    semana: p.semana,
+                    casos_reales: p.validacion?.casos_reales,
+                    error_porcentaje: p.validacion?.casos_reales > 0 
+                        ? Math.abs(((p.prediccion?.casos_proxima_semana || 0) - p.validacion.casos_reales) / p.validacion.casos_reales) * 100
+                        : 0
+                })) : [],
+                metricas: metricsValidacion || {}
+            };
+
+            const response = await fetch(`${API_URL}/predicciones/guardar`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(datosGuardar)
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                setMensajeGuardado({
+                    tipo: 'success',
+                    texto: `✅ Predicción guardada exitosamente (ID: ${data.id})`
+                });
+            } else {
+                throw new Error(data.error || 'Error al guardar');
+            }
+        } catch (err) {
+            console.error('Error guardando:', err);
+            setMensajeGuardado({
+                tipo: 'error',
+                texto: `❌ Error: ${err.message}`
+            });
+        } finally {
+            setGuardando(false);
+        }
     };
 
     return (
@@ -426,14 +493,50 @@ const PrediccionAvanzada = () => {
             {/* Tabla detallada con comparación */}
             {predicciones.length > 0 && (
                 <div className="bg-white rounded-xl border shadow-lg overflow-hidden">
-                    <div className="p-4 bg-gray-50 border-b flex justify-between items-center">
+                    <div className="p-4 bg-gray-50 border-b flex justify-between items-center flex-wrap gap-3">
                         <h3 className="text-lg font-bold">📋 Detalle de Predicciones vs Datos Reales</h3>
-                        {formData.modo_validacion && (
-                            <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">
-                                ✓ Modo Validación Activo
-                            </span>
-                        )}
+                        <div className="flex items-center gap-3">
+                            {formData.modo_validacion && (
+                                <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">
+                                    ✓ Modo Validación Activo
+                                </span>
+                            )}
+                            {/* Botón Guardar Predicción */}
+                            <button
+                                onClick={guardarPrediccion}
+                                disabled={guardando}
+                                className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-medium rounded-lg hover:from-blue-700 hover:to-indigo-700 disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed flex items-center gap-2 shadow-md transition-all"
+                            >
+                                {guardando ? (
+                                    <>
+                                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                                        </svg>
+                                        Guardando...
+                                    </>
+                                ) : (
+                                    <>💾 Guardar Predicción</>
+                                )}
+                            </button>
+                        </div>
                     </div>
+                    
+                    {/* Mensaje de guardado */}
+                    {mensajeGuardado && (
+                        <div className={`mx-4 mt-4 p-3 rounded-lg ${
+                            mensajeGuardado.tipo === 'success' 
+                                ? 'bg-green-50 text-green-700 border border-green-200' 
+                                : 'bg-red-50 text-red-700 border border-red-200'
+                        }`}>
+                            {mensajeGuardado.texto}
+                            {mensajeGuardado.tipo === 'success' && (
+                                <span className="ml-2 text-sm">
+                                    - Ve al <a href="/dashboard-predicciones" className="underline font-medium hover:text-green-800">Dashboard de Predicciones</a> para visualizar
+                                </span>
+                            )}
+                        </div>
+                    )}
                     <div className="overflow-x-auto">
                         <table className="w-full">
                             <thead className="bg-gray-100">

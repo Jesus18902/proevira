@@ -23,7 +23,9 @@ const Sidebar = () => {
     { path: '/analisis', icon: 'analytics', label: 'Análisis de Datos' },
     { path: '/modelos', icon: 'psychology', label: 'Predicción Rápida' },
     { path: '/prediccion-avanzada', icon: 'query_stats', label: 'Predicción Avanzada' },
+    { path: '/dashboard-predicciones', icon: 'monitoring', label: 'Historial Predicciones' },
     { path: '/reportes', icon: 'description', label: 'Reportes' },
+    { path: '/alertas', icon: 'notifications_active', label: 'Alertas' },
     { path: '/configuracion', icon: 'settings', label: 'Configuración' }
   ];
 
