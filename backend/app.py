@@ -56,9 +56,9 @@ ESTADO_POR_ID = {
 connection_pool = None
 try:
     connection_pool = pooling.MySQLConnectionPool(**DB_CONFIG)
-    print("âœ… Pool de conexiones MySQL creado")
+    print("✔ Pool de conexiones MySQL creado")
 except Exception as e:
-    print(f"âŒ Error creando pool MySQL: {e}")
+    print(f"❌ Error creando pool MySQL: {e}")
 
 # Cargar modelos ML
 MODELO_DENGUE = None
@@ -73,13 +73,12 @@ try:
     
     MODELO_DENGUE = joblib.load(model_path)
     LABEL_ENCODER = joblib.load(encoder_path)
-    print("âœ… Modelo Random Forest (Clasificador) cargado")
+    print("✔ Modelo Random Forest (Clasificador) cargado")
     print(f"   - Features esperados: {MODELO_DENGUE.n_features_in_}")
     print(f"   - Estados en encoder: {len(LABEL_ENCODER.classes_)}")
 except Exception as e:
-    print(f"âŒ Error cargando modelo clasificador: {e}")
-
-# Cargar modelo de regresiÃ³n para predicciÃ³n de casos
+    print(f"❌ Error cargando modelo clasificador: {e}")
+# Cargar modelo de regresión para predicción de casos
 try:
     regressor_path = os.path.join(BACKEND_DIR, 'model_regressor.pkl')
     features_path = os.path.join(BACKEND_DIR, 'regressor_features.pkl')
@@ -104,7 +103,7 @@ def get_db_connection():
 
 
 # ============================================
-# ENDPOINT PRINCIPAL: PREDICCIÃ“N CON RANDOM FOREST
+# ENDPOINT PRINCIPAL: PREDICCIÓN CON RANDOM FOREST
 # ============================================
 @app.route('/api/modelo/predecir-riesgo-automatico', methods=['POST'])
 def predecir_riesgo():
@@ -141,12 +140,12 @@ def predecir_riesgo():
         region = cursor.fetchone()
         
         if not region:
-            return jsonify({'success': False, 'error': 'RegiÃ³n no encontrada'}), 404
+            return jsonify({'success': False, 'error': 'Región no encontrada'}), 404
         
         poblacion = region['poblacion'] or 100000
         nombre_estado = region['nombre']
         
-        # 2. Obtener Ãºltima fecha con datos
+        # 2. Obtener última fecha con datos
         cursor.execute(
             'SELECT MAX(fecha_fin_semana) as ultima_fecha FROM dato_epidemiologico WHERE id_region = %s',
             (id_region,)
@@ -157,10 +156,10 @@ def predecir_riesgo():
         if not ultima_fecha:
             return jsonify({
                 'success': False,
-                'error': f'No hay datos histÃ³ricos para {nombre_estado}'
+                'error': f'No hay datos históricos para {nombre_estado}'
             }), 404
         
-        # 3. Obtener casos de la Ãºltima semana (lag 1 semana)
+        # 3. Obtener casos de la última semana (lag 1 semana)
         cursor.execute('''
             SELECT COALESCE(SUM(casos_confirmados), 0) as total
             FROM dato_epidemiologico
@@ -192,10 +191,10 @@ def predecir_riesgo():
         try:
             entidad_coded = LABEL_ENCODER.transform([nombre_para_encoder])[0]
         except ValueError:
-            print(f"âš ï¸ Estado '{nombre_para_encoder}' no en encoder, usando Ã­ndice")
+            print(f"⚠️ Estado '{nombre_para_encoder}' no en encoder, usando índice")
             entidad_coded = id_region - 1
         
-        # 8. Crear DataFrame para predicciÃ³n
+        # 8. Crear DataFrame para predicción
         X_predict = pd.DataFrame({
             'TI_LAG_1W': [ti_lag_1w],
             'TI_LAG_4W': [ti_lag_4w],
@@ -206,9 +205,9 @@ def predecir_riesgo():
             'ENTIDAD_CODED': [entidad_coded]
         })
         
-        print(f"ðŸ“Š PredicciÃ³n RF para {nombre_estado}: casos={casos_lag_1w}, TI={ti_lag_1w:.2f}")
+        print(f"📊 Predicción RF para {nombre_estado}: casos={casos_lag_1w}, TI={ti_lag_1w:.2f}")
         
-        # 9. PREDICCIÃ“N CON RANDOM FOREST
+        # 9. PREDICCIÓN CON RANDOM FOREST
         prediction_proba = MODELO_DENGUE.predict_proba(X_predict)[0][1]
         prediction_class = MODELO_DENGUE.predict(X_predict)[0]
         
@@ -230,12 +229,12 @@ def predecir_riesgo():
             mensaje = 'Riesgo bajo. Mantener vigilancia estÃ¡ndar y control vectorial.'
 
         recomendaciones_map = {
-            'CrÃ\xadtico': 'Activar protocolos de emergencia, reforzar fumigaciÃ³n y comunicaciÃ³n inmediata a la poblaciÃ³n.',
-            'Alto': 'Intensificar vigilancia, aumentar fumigaciÃ³n y campaÃ±as de descacharrizaciÃ³n.',
-            'Moderado': 'Mantener vigilancia activa y reforzar educaciÃ³n preventiva.',
+            'Crítico': 'Activar protocolos de emergencia, reforzar fumigación y comunicación inmediata a la población.',
+            'Alto': 'Intensificar vigilancia, aumentar fumigación y campañas de descacharrización.',
+            'Moderado': 'Mantener vigilancia activa y reforzar educación preventiva.',
             'Bajo': 'Continuar con las acciones preventivas habituales.'
         }
-        recomendaciones = recomendaciones_map.get(nivel_riesgo, 'Mantener vigilancia segÃºn lineamientos locales.')
+        recomendaciones = recomendaciones_map.get(nivel_riesgo, 'Mantener vigilancia según lineamientos locales.')
         
         # 11. Calcular tendencias
         tendencia_casos = casos_lag_1w - casos_lag_4w
@@ -320,8 +319,8 @@ def predecir_riesgo():
 @app.route('/api/modelo/predecir-riesgo-avanzado', methods=['POST'])
 def predecir_riesgo_avanzado():
     """
-    PredicciÃ³n avanzada con fecha especÃ­fica.
-    Permite evaluar fechas histÃ³ricas y proyectar hacia el futuro.
+    Predicción avanzada con fecha específica.
+    Permite evaluar fechas históricas y proyectar hacia el futuro.
     """
     
     if MODELO_DENGUE is None or LABEL_ENCODER is None:
@@ -332,7 +331,7 @@ def predecir_riesgo_avanzado():
     
     conn = get_db_connection()
     if not conn:
-        return jsonify({'success': False, 'error': 'Error de conexiÃ³n a la base de datos'}), 500
+        return jsonify({'success': False, 'error': 'Error de conexión a la base de datos'}), 500
     
     try:
         data = request.get_json(force=True)
@@ -357,12 +356,12 @@ def predecir_riesgo_avanzado():
         region = cursor.fetchone()
         
         if not region:
-            return jsonify({'success': False, 'error': 'RegiÃ³n no encontrada'}), 404
+            return jsonify({'success': False, 'error': 'Región no encontrada'}), 404
         
         poblacion = region['poblacion'] or 100000
         nombre_estado = region['nombre']
         
-        # 2. Obtener Ãºltima fecha disponible en la BD
+        # 2. Obtener última fecha disponible en la BD
         cursor.execute('''
             SELECT MAX(fecha_fin_semana) as ultima_fecha
             FROM dato_epidemiologico
@@ -384,11 +383,11 @@ def predecir_riesgo_avanzado():
         semanas_futuras = 0
         
         if es_fecha_futura:
-            # Calcular cuÃ¡ntas semanas en el futuro
+            # Calcular cuantas semanas en el futuro
             dias_diferencia = (fecha_dt.date() - ultima_fecha_disponible).days
             semanas_futuras = max(0, dias_diferencia // 7)
         
-        # 4. Obtener datos base (de la Ãºltima semana disponible o semana especÃ­fica)
+        # 4. Obtener datos base (de la última semana disponible o semana específica)
         if es_fecha_futura:
             fecha_datos = ultima_fecha_disponible
         else:
@@ -415,7 +414,7 @@ def predecir_riesgo_avanzado():
         if not datos_anteriores or len(datos_anteriores) < 4:
             return jsonify({
                 'success': False,
-                'error': f'No hay suficientes datos histÃ³ricos para {nombre_estado}'
+                'error': f'No hay suficientes datos históricos para {nombre_estado}'
             }), 404
         
         # Extraer valores
@@ -500,14 +499,14 @@ def predecir_riesgo_avanzado():
         
         # 11. Nivel y mensaje de riesgo
         if riesgo_probabilidad >= 75:
-            nivel_riesgo = 'CrÃ­tico'
-            mensaje = 'ALERTA CRÃTICA: Riesgo muy alto de brote.'
+            nivel_riesgo = 'Crítico'
+            mensaje = 'ALERTA CRÍTICA: Riesgo muy alto de brote.'
         elif riesgo_probabilidad >= 50:
             nivel_riesgo = 'Alto'
             mensaje = 'ADVERTENCIA: Riesgo elevado de brote.'
         elif riesgo_probabilidad >= 25:
             nivel_riesgo = 'Moderado'
-            mensaje = 'PRECAUCIÃ“N: Riesgo moderado.'
+            mensaje = 'PRECAUCIÓN: Riesgo moderado.'
         else:
             nivel_riesgo = 'Bajo'
             mensaje = 'Riesgo bajo.'
@@ -645,10 +644,10 @@ def get_enfermedades():
 
 @app.route('/api/dashboard/resumen', methods=['GET'])
 def get_resumen():
-    """EstadÃ­sticas para dashboard"""
+    """Estadísticas para dashboard"""
     conn = get_db_connection()
     if not conn:
-        return jsonify({'error': 'Error de conexiÃ³n'}), 500
+        return jsonify({'error': 'Error de conexión'}), 500
     try:
         cursor = conn.cursor(dictionary=True)
         cursor.execute('SELECT COALESCE(SUM(casos_confirmados), 0) as total FROM dato_epidemiologico')
@@ -768,15 +767,15 @@ def health():
 
 @app.route('/api/reportes/epidemiologico', methods=['GET'])
 def get_reporte_epidemiologico():
-    """Reporte epidemiolÃ³gico completo con estadÃ­sticas histÃ³ricas"""
+    """Reporte epidemiológico completo con estadísticas históricas"""
     conn = get_db_connection()
     if not conn:
-        return jsonify({'error': 'Error de conexiÃ³n'}), 500
+        return jsonify({'error': 'Error de conexión'}), 500
     
     try:
         cursor = conn.cursor(dictionary=True)
         
-        # 1. EstadÃ­sticas generales
+        # 1. Estadísticas generales
         cursor.execute("""
             SELECT 
                 COUNT(*) as total_registros,
@@ -938,10 +937,10 @@ def get_reporte_epidemiologico():
 
 @app.route('/api/reportes/estado/<int:id_region>', methods=['GET'])
 def get_reporte_estado(id_region):
-    """Reporte detallado por estado especÃ­fico"""
+    """Reporte detallado por estado específico"""
     conn = get_db_connection()
     if not conn:
-        return jsonify({'error': 'Error de conexiÃ³n'}), 500
+        return jsonify({'error': 'Error de conexión'}), 500
     
     try:
         cursor = conn.cursor(dictionary=True)
@@ -1040,7 +1039,7 @@ def crear_tabla_predicciones():
 
 @app.route('/api/predicciones/guardar', methods=['POST'])
 def guardar_prediccion():
-    """Guarda una predicciÃ³n en la base de datos"""
+    """Guarda una predicción en la base de datos"""
     import json
     
     data = request.json
@@ -1142,12 +1141,12 @@ def listar_predicciones():
 
 @app.route('/api/predicciones/<int:id>', methods=['GET'])
 def obtener_prediccion(id):
-    """Obtiene una predicciÃ³n especÃ­fica con todos sus datos"""
+    """Obtiene una predicción específica con todos sus datos"""
     import json
     
     conn = get_db_connection()
     if not conn:
-        return jsonify({'error': 'Error de conexiÃ³n'}), 500
+        return jsonify({'error': 'Error de conexión'}), 500
     
     try:
         cursor = conn.cursor(dictionary=True)
@@ -1158,7 +1157,7 @@ def obtener_prediccion(id):
         prediccion = cursor.fetchone()
         
         if not prediccion:
-            return jsonify({'error': 'PredicciÃ³n no encontrada'}), 404
+            return jsonify({'error': 'Predicción no encontrada'}), 404
         
         # Parsear JSON y convertir fechas
         prediccion['datos_prediccion'] = json.loads(prediccion['datos_prediccion']) if prediccion['datos_prediccion'] else []
@@ -1182,10 +1181,10 @@ def obtener_prediccion(id):
 
 @app.route('/api/predicciones/<int:id>', methods=['DELETE'])
 def eliminar_prediccion(id):
-    """Elimina una predicciÃ³n"""
+    """Elimina una predicción"""
     conn = get_db_connection()
     if not conn:
-        return jsonify({'error': 'Error de conexiÃ³n'}), 500
+        return jsonify({'error': 'Error de conexión'}), 500
     
     try:
         cursor = conn.cursor()
@@ -1208,10 +1207,10 @@ def eliminar_prediccion(id):
 
 
 # ============================================
-# ENDPOINTS PARA GESTIÃ“N DE DATOS (CONFIGURACIÃ“N)
+# ENDPOINTS PARA GESTIÓN DE DATOS (CONFIGURACIÓN)
 # ============================================
 
-# PoblaciÃ³n 2025 por estado
+# Población 2025 por estado
 POBLACION_2025 = {
     1: 1512400, 2: 3968300, 3: 850700, 4: 1011800, 5: 3328500, 6: 775100,
     7: 6000100, 8: 3998500, 9: 9386700, 10: 1913400, 11: 6555200, 12: 3724300,
@@ -1223,7 +1222,7 @@ POBLACION_2025 = {
 
 @app.route('/api/datos/estadisticas', methods=['GET'])
 def get_estadisticas_datos():
-    """Obtiene estadÃ­sticas generales de los datos cargados"""
+    """Obtiene estadísticas generales de los datos cargados"""
     conn = get_db_connection()
     if not conn:
         return jsonify({'error': 'Error de conexión'}), 500
@@ -1537,10 +1536,10 @@ def limpiar_datos():
 
 @app.route('/api/datos/limpiar-anio/<int:anio>', methods=['DELETE'])
 def limpiar_datos_anio(anio):
-    """Elimina datos de un aÃ±o especÃ­fico"""
+    """Elimina datos de un año específico"""
     conn = get_db_connection()
     if not conn:
-        return jsonify({'error': 'Error de conexiÃ³n'}), 500
+        return jsonify({'error': 'Error de conexión'}), 500
     
     try:
         cursor = conn.cursor()
@@ -1570,7 +1569,7 @@ def resumen_por_estado():
     """Obtiene resumen de datos por estado"""
     conn = get_db_connection()
     if not conn:
-        return jsonify({'error': 'Error de conexiÃ³n'}), 500
+        return jsonify({'error': 'Error de conexión'}), 500
     
     try:
         cursor = conn.cursor(dictionary=True)
@@ -1609,11 +1608,11 @@ def resumen_por_estado():
 
 @app.route('/api/sistema/info', methods=['GET'])
 def info_sistema():
-    """InformaciÃ³n del sistema y modelos"""
+    """Información del sistema y modelos"""
     return jsonify({
         'success': True,
         'sistema': {
-            'nombre': 'ProeVira - Sistema de PredicciÃ³n de Enfermedades',
+            'nombre': 'ProeVira - Sistema de Predicción de Enfermedades',
             'version': '1.0.0',
             'base_datos': 'MySQL (proyecto_integrador)'
         },
@@ -1681,10 +1680,10 @@ def crear_tabla_alertas():
 
 @app.route('/api/alertas/generar-automaticas', methods=['POST'])
 def generar_alertas_automaticas():
-    """Genera alertas automÃ¡ticas basadas en predicciones de riesgo"""
+    """Genera alertas automáticas basadas en predicciones de riesgo"""
     conn = get_db_connection()
     if not conn:
-        return jsonify({'error': 'Error de conexiÃ³n'}), 500
+        return jsonify({'error': 'Error de conexión'}), 500
     
     try:
         data = request.get_json() or {}
