@@ -37,12 +37,12 @@ DB_CONFIG = {
 ESTADO_POR_ID = {
     1: 'Aguascalientes', 2: 'Baja California', 3: 'Baja California Sur',
     4: 'Campeche', 5: 'Coahuila de Zaragoza', 6: 'Colima',
-    7: 'Chiapas', 8: 'Chihuahua', 9: 'Ciudad de MÃ©xico',
+    7: 'Chiapas', 8: 'Chihuahua', 9: 'Ciudad de México',
     10: 'Durango', 11: 'Guanajuato', 12: 'Guerrero',
-    13: 'Hidalgo', 14: 'Jalisco', 15: 'MÃ©xico',
+    13: 'Hidalgo', 14: 'Jalisco', 15: 'México',
     16: 'Michoacan de Ocampo', 17: 'Morelos', 18: 'Nayarit',
-    19: 'Nuevo LeÃ³n', 20: 'Oaxaca', 21: 'Puebla',
-    22: 'QuerÃ©taro', 23: 'Quintana Roo', 24: 'San Luis Potosi­',
+    19: 'Nuevo León', 20: 'Oaxaca', 21: 'Puebla',
+    22: 'Queretaro', 23: 'Quintana Roo', 24: 'San Luis Potosí',
     25: 'Sinaloa', 26: 'Sonora', 27: 'Tabasco',
     28: 'Tamaulipas', 29: 'Tlaxcala', 30: 'Veracruz de Ignacio de la Llave',
     31: 'Yucatan', 32: 'Zacatecas'
@@ -88,15 +88,15 @@ try:
         MODELO_REGRESSOR = joblib.load(regressor_path)
         REGRESSOR_FEATURES = joblib.load(features_path)
         LABEL_ENCODER_REG = joblib.load(encoder_reg_path)
-        print("âœ… Modelo Random Forest (Regresor) cargado - RÂ²=96.3%")
+        print("✔ Modelo Random Forest (Regresor) cargado - R²=96.3%")
         print(f"   - Features: {len(REGRESSOR_FEATURES)}")
 except Exception as e:
-    print(f"âš ï¸ Modelo de regresiÃ³n no disponible: {e}")
+    print(f"❌ Modelo de regresión no disponible: {e}")
     MODELO_REGRESSOR = None
 
 
 def get_db_connection():
-    """Obtiene una conexiÃ³n del pool"""
+    """Obtiene una conexión del pool"""
     if connection_pool:
         return connection_pool.get_connection()
     return None
@@ -121,7 +121,7 @@ def predecir_riesgo():
     
     conn = get_db_connection()
     if not conn:
-        return jsonify({'success': False, 'error': 'Error de conexiÃ³n a la base de datos'}), 500
+        return jsonify({'success': False, 'error': 'Error de conexión a la base de datos'}), 500
     
     try:
         data = request.get_json(force=True)
@@ -216,17 +216,17 @@ def predecir_riesgo():
         
         # 10. Determinar nivel, mensaje y recomendaciones
         if riesgo_probabilidad >= 75:
-            nivel_riesgo = 'CrÃ­tico'
-            mensaje = 'ALERTA CRÃTICA: Riesgo muy alto de brote. Activar protocolos de emergencia.'
+            nivel_riesgo = 'Crítico'
+            mensaje = 'ALERTA CRÍTICA: Riesgo muy alto de brote. Activar protocolos de emergencia.'
         elif riesgo_probabilidad >= 50:
             nivel_riesgo = 'Alto'
-            mensaje = 'ADVERTENCIA: Riesgo elevado de brote. Intensificar vigilancia epidemiolÃ³gica.'
+            mensaje = 'ADVERTENCIA: Riesgo elevado de brote. Intensificar vigilancia epidemiológica.'
         elif riesgo_probabilidad >= 25:
             nivel_riesgo = 'Moderado'
-            mensaje = 'PRECAUCIÃ“N: Riesgo moderado. Mantener vigilancia activa.'
+            mensaje = 'PRECAUCIÓN: Riesgo moderado. Mantener vigilancia activa.'
         else:
             nivel_riesgo = 'Bajo'
-            mensaje = 'Riesgo bajo. Mantener vigilancia estÃ¡ndar y control vectorial.'
+            mensaje = 'Riesgo bajo. Mantener vigilancia estándar y control vectorial.'
 
         recomendaciones_map = {
             'Crítico': 'Activar protocolos de emergencia, reforzar fumigación y comunicación inmediata a la población.',
