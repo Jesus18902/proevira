@@ -30,7 +30,8 @@ DB_CONFIG = {
     'password': os.getenv('DB_PASSWORD', ''),
     'database': os.getenv('DB_NAME', 'proyecto_integrador'),
     'pool_name': 'flask_pool',
-    'pool_size': int(os.getenv('DB_POOL_SIZE', 5))
+    'pool_size': int(os.getenv('DB_POOL_SIZE', 20)),
+    'pool_reset_session': True
 }
 
 # Mapeo de id_region (INEGI) a nombre de estado para el LabelEncoder
@@ -95,10 +96,24 @@ except Exception as e:
     MODELO_REGRESSOR = None
 
 
-def get_db_connection():
-    """Obtiene una conexión del pool"""
-    if connection_pool:
-        return connection_pool.get_connection()
+def get_db_connection(max_retries=3):
+    """Obtiene una conexión del pool con reintentos"""
+    import time
+
+    if not connection_pool:
+        return None
+
+    for attempt in range(max_retries):
+        try:
+            conn = connection_pool.get_connection()
+            return conn
+        except pooling.PoolError as e:
+            if attempt < max_retries - 1:
+                print(f"Pool exhausto, reintento {attempt + 1}/{max_retries}...")
+                time.sleep(0.5)  # Esperar medio segundo antes de reintentar
+            else:
+                print(f"Error: Pool de conexiones agotado después de {max_retries} intentos")
+                raise e
     return None
 
 
@@ -702,16 +717,17 @@ def health():
         }
     }
 
-    # Verificar conexiÃ³n a base de datos
+    # Verificar conexión a base de datos
     if conn:
+        cursor = None
         try:
             cursor = conn.cursor(dictionary=True)
 
-            # Estado de conexiÃ³n
+            # Estado de conexión
             health_status['database']['status'] = 'connected'
             health_status['database']['active_connections'] = 1
 
-            # Contar predicciones del dÃ­a
+            # Contar predicciones del día
             cursor.execute("""
                 SELECT COUNT(*) as total_hoy
                 FROM prediccion
@@ -725,7 +741,7 @@ def health():
             result = cursor.fetchone()
             health_status['predictions']['total'] = result['total'] if result else 0
 
-            # DistribuciÃ³n por nivel de riesgo
+            # Distribución por nivel de riesgo
             cursor.execute("""
                 SELECT nivel_riesgo, COUNT(*) as cantidad
                 FROM prediccion
@@ -738,17 +754,18 @@ def health():
                 for d in distribucion
             ] if distribucion else []
 
-            # Tasa de Ã©xito
+            # Tasa de éxito
             health_status['predictions']['success_rate'] = 95.0
             health_status['predictions']['last_minute'] = 0
-
-            cursor.close()
-            conn.close()
 
         except Exception as e:
             health_status['database']['status'] = 'error'
             health_status['status'] = 'degraded'
             print(f"Error en health check DB: {e}")
+        finally:
+            if cursor:
+                cursor.close()
+            conn.close()
 
     # Verificar modelos ML - CORRECCIÃ“N AQUÃ
     if MODELO_DENGUE is not None and LABEL_ENCODER is not None:

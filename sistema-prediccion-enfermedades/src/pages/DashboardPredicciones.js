@@ -6,8 +6,8 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, Area, AreaChart
 } from 'recharts';
-import { 
-  Calendar, Download, FileText, TrendingUp, AlertTriangle, 
+import {
+  Calendar, Download, FileText, TrendingUp, AlertTriangle,
   Activity, MapPin, RefreshCw, Trash2, Eye, Filter
 } from 'lucide-react';
 import jsPDF from 'jspdf';
@@ -15,11 +15,21 @@ import html2canvas from 'html2canvas';
 
 const API_URL = 'http://localhost:5001/api';
 
+// Colores para niveles de riesgo (verde-bajo, amarillo-moderado, naranja-alto, rojo-crítico)
 const COLORS = {
-  bajo: '#22c55e',
-  medio: '#eab308', 
-  alto: '#f97316',
-  critico: '#ef4444'
+  'bajo': '#22c55e',
+  'moderado': '#eab308',
+  'medio': '#eab308',
+  'alto': '#f97316',
+  'crítico': '#ef4444',
+  'critico': '#ef4444'
+};
+
+// Función para obtener el color por nivel de riesgo
+const getColorByNivel = (nivel) => {
+  if (!nivel) return '#8884d8';
+  const nivelLower = nivel.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return COLORS[nivelLower] || COLORS[nivel.toLowerCase()] || '#8884d8';
 };
 
 const DashboardPredicciones = () => {
@@ -42,7 +52,7 @@ const DashboardPredicciones = () => {
     try {
       const response = await fetch(`${API_URL}/predicciones/historial`);
       const data = await response.json();
-      
+
       if (data.success) {
         setPredicciones(data.predicciones);
         // Seleccionar la primera automáticamente si existe
@@ -65,7 +75,7 @@ const DashboardPredicciones = () => {
     try {
       const response = await fetch(`${API_URL}/predicciones/${id}`);
       const data = await response.json();
-      
+
       if (data.success) {
         setPrediccionSeleccionada(data.prediccion);
         setDatosPrediccion(data.prediccion.datos_prediccion);
@@ -79,13 +89,13 @@ const DashboardPredicciones = () => {
 
   const eliminarPrediccion = async (id) => {
     if (!window.confirm('¿Estás seguro de eliminar esta predicción?')) return;
-    
+
     try {
       const response = await fetch(`${API_URL}/predicciones/${id}`, {
         method: 'DELETE'
       });
       const data = await response.json();
-      
+
       if (data.success) {
         cargarHistorial();
         if (prediccionSeleccionada?.id === id) {
@@ -104,7 +114,7 @@ const DashboardPredicciones = () => {
 
     const headers = ['Semana', 'Fecha', 'Casos Estimados', 'Nivel Riesgo', 'Probabilidad', 'Casos Reales', 'Error %'];
     const validacion = prediccionSeleccionada?.datos_validacion || [];
-    
+
     const rows = datosPrediccion.map((pred, idx) => {
       const val = validacion[idx] || {};
       return [
@@ -121,7 +131,7 @@ const DashboardPredicciones = () => {
     const csv = [headers.join(','), ...rows].join('\n');
     const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
-    
+
     const link = document.createElement('a');
     link.href = url;
     link.download = `prediccion_${prediccionSeleccionada.estado}_${prediccionSeleccionada.fecha_inicio}.csv`;
@@ -139,37 +149,37 @@ const DashboardPredicciones = () => {
         useCORS: true,
         logging: false
       });
-      
+
       const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF('landscape', 'mm', 'a4');
-      
+
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = pdf.internal.pageSize.getHeight();
       const imgWidth = canvas.width;
       const imgHeight = canvas.height;
       const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
-      
+
       const imgX = (pdfWidth - imgWidth * ratio) / 2;
       const imgY = 10;
-      
+
       // Título
       pdf.setFontSize(16);
       pdf.text(`Predicción de Dengue - ${prediccionSeleccionada.estado}`, 14, 15);
       pdf.setFontSize(10);
       pdf.text(`Generado: ${new Date(prediccionSeleccionada.fecha_generacion).toLocaleString()}`, 14, 22);
-      
+
       pdf.addImage(imgData, 'PNG', imgX, 30, imgWidth * ratio * 0.9, imgHeight * ratio * 0.9);
-      
+
       // Tabla de datos en segunda página
       pdf.addPage();
       pdf.setFontSize(14);
       pdf.text('Datos de Predicción', 14, 15);
-      
+
       let yPos = 25;
       pdf.setFontSize(9);
       pdf.text(['Semana', 'Fecha', 'Casos Est.', 'Riesgo', 'Prob.', 'Reales', 'Error%'].join('    '), 14, yPos);
       yPos += 7;
-      
+
       const validacion = prediccionSeleccionada?.datos_validacion || [];
       datosPrediccion.forEach((pred, idx) => {
         const val = validacion[idx] || {};
@@ -189,7 +199,7 @@ const DashboardPredicciones = () => {
           yPos = 20;
         }
       });
-      
+
       pdf.save(`prediccion_${prediccionSeleccionada.estado}_${prediccionSeleccionada.fecha_inicio}.pdf`);
     } catch (err) {
       console.error('Error generando PDF:', err);
@@ -206,7 +216,7 @@ const DashboardPredicciones = () => {
     const totalCasos = datosPrediccion.reduce((sum, p) => sum + (p.casos_estimados || 0), 0);
     const promedioProb = datosPrediccion.reduce((sum, p) => sum + (p.probabilidad || 0), 0) / datosPrediccion.length;
     const maxCasos = Math.max(...datosPrediccion.map(p => p.casos_estimados || 0));
-    const alertas = datosPrediccion.filter(p => 
+    const alertas = datosPrediccion.filter(p =>
       p.nivel_riesgo === 'Alto' || p.nivel_riesgo === 'Crítico'
     ).length;
 
@@ -216,14 +226,17 @@ const DashboardPredicciones = () => {
   // Datos para gráfica de distribución de riesgo
   const datosDistribucion = () => {
     if (!datosPrediccion) return [];
-    
-    const conteo = { Bajo: 0, Medio: 0, Alto: 0, Crítico: 0 };
+
+    const conteo = { Bajo: 0, Moderado: 0, Alto: 0, Crítico: 0 };
     datosPrediccion.forEach(p => {
-      if (conteo.hasOwnProperty(p.nivel_riesgo)) {
-        conteo[p.nivel_riesgo]++;
-      }
+      // Normalizar el nivel de riesgo
+      const nivel = p.nivel_riesgo;
+      if (nivel === 'Bajo') conteo.Bajo++;
+      else if (nivel === 'Moderado' || nivel === 'Medio') conteo.Moderado++;
+      else if (nivel === 'Alto') conteo.Alto++;
+      else if (nivel === 'Crítico' || nivel === 'Critico') conteo.Crítico++;
     });
-    
+
     return Object.entries(conteo)
       .filter(([_, v]) => v > 0)
       .map(([name, value]) => ({ name, value }));
@@ -294,7 +307,7 @@ const DashboardPredicciones = () => {
                 <RefreshCw className="w-4 h-4" />
                 Actualizar
               </button>
-              
+
               <button
                 onClick={exportarCSV}
                 disabled={!datosPrediccion}
@@ -303,7 +316,7 @@ const DashboardPredicciones = () => {
                 <Download className="w-4 h-4" />
                 CSV
               </button>
-              
+
               <button
                 onClick={exportarPDF}
                 disabled={!datosPrediccion}
@@ -390,24 +403,24 @@ const DashboardPredicciones = () => {
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="semana" />
                     <YAxis />
-                    <Tooltip 
+                    <Tooltip
                       formatter={(value, name) => [value, name === 'casos_estimados' ? 'Casos Est.' : name]}
                       labelFormatter={(label) => `Semana ${label}`}
                     />
                     <Legend />
-                    <Area 
-                      type="monotone" 
-                      dataKey="casos_estimados" 
-                      stroke="#3b82f6" 
-                      fill="#93c5fd" 
+                    <Area
+                      type="monotone"
+                      dataKey="casos_estimados"
+                      stroke="#3b82f6"
+                      fill="#93c5fd"
                       name="Casos Estimados"
                     />
                     {prediccionSeleccionada.datos_validacion?.length > 0 && (
-                      <Line 
-                        type="monotone" 
-                        dataKey="casos_reales" 
+                      <Line
+                        type="monotone"
+                        dataKey="casos_reales"
                         data={prediccionSeleccionada.datos_validacion}
-                        stroke="#ef4444" 
+                        stroke="#ef4444"
                         strokeWidth={2}
                         dot={{ fill: '#ef4444' }}
                         name="Casos Reales"
@@ -436,9 +449,9 @@ const DashboardPredicciones = () => {
                       dataKey="value"
                     >
                       {datosDistribucion().map((entry, index) => (
-                        <Cell 
-                          key={`cell-${index}`} 
-                          fill={COLORS[entry.name.toLowerCase()] || '#8884d8'} 
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={getColorByNivel(entry.name)}
                         />
                       ))}
                     </Pie>
@@ -460,8 +473,8 @@ const DashboardPredicciones = () => {
                   <XAxis dataKey="semana" />
                   <YAxis domain={[0, 100]} />
                   <Tooltip formatter={(value) => [`${value}%`, 'Probabilidad']} />
-                  <Bar 
-                    dataKey="probabilidad" 
+                  <Bar
+                    dataKey="probabilidad"
                     fill="#8b5cf6"
                     radius={[4, 4, 0, 0]}
                   />
@@ -545,7 +558,7 @@ const DashboardPredicciones = () => {
               No hay predicción seleccionada
             </h3>
             <p className="text-gray-500">
-              {predicciones.length === 0 
+              {predicciones.length === 0
                 ? 'Aún no hay predicciones guardadas. Ve a "Predicción Avanzada" para crear una.'
                 : 'Selecciona una predicción del menú desplegable para ver el dashboard.'}
             </p>

@@ -27,7 +27,7 @@ app.use(fileUpload({
 const pool = mysql.createPool({
   host: 'localhost',
   user: 'root',
-  password: '1234567', // Tu contraseña de MySQL
+  password: '1234', // Tu contraseña de MySQL
   database: 'proyecto_integrador',
   waitForConnections: true,
   connectionLimit: 10,
@@ -46,8 +46,8 @@ console.log('💾 Base de datos: proyecto_integrador');
 
 // ==================== ENDPOINT DE PRUEBA ====================
 app.get('/api/test', (req, res) => {
-  res.json({ 
-    success: true, 
+  res.json({
+    success: true,
     message: 'Backend funcionando correctamente',
     timestamp: new Date().toISOString()
   });
@@ -56,31 +56,31 @@ app.get('/api/test', (req, res) => {
 // ==================== ENDPOINTS DE AUTENTICACIÓN ====================
 app.post('/api/auth/login', async (req, res) => {
   const { email, contrasena } = req.body;
-  
+
   console.log('Intento de login:', { email });
-  
+
   try {
     const [usuarios] = await pool.execute(
       'SELECT id_usuario, nombre, email, rol, estado FROM usuario WHERE email = ? AND contrasena = ?',
       [email, contrasena]
     );
-    
+
     if (usuarios.length === 0) {
-      return res.status(401).json({ 
+      return res.status(401).json({
         success: false,
-        error: 'Credenciales inválidas' 
+        error: 'Credenciales inválidas'
       });
     }
-    
+
     const usuario = usuarios[0];
-    
+
     if (usuario.estado !== 'activo') {
-      return res.status(401).json({ 
+      return res.status(401).json({
         success: false,
-        error: 'Usuario inactivo' 
+        error: 'Usuario inactivo'
       });
     }
-    
+
     try {
       await pool.execute(
         'INSERT INTO bitacora (id_usuario, fecha_hora, accion) VALUES (?, NOW(), ?)',
@@ -89,7 +89,7 @@ app.post('/api/auth/login', async (req, res) => {
     } catch (bitacoraError) {
       console.warn('Advertencia bitácora:', bitacoraError.message);
     }
-    
+
     res.json({
       success: true,
       usuario: {
@@ -101,7 +101,7 @@ app.post('/api/auth/login', async (req, res) => {
     });
   } catch (error) {
     console.error('Error en login:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
       error: 'Error en autenticación'
     });
@@ -164,7 +164,7 @@ app.get('/api/datos/archivos-recientes', async (req, res) => {
       })
       .sort((a, b) => b.fecha - a.fecha)
       .slice(0, 10);
-    
+
     console.log('Archivos encontrados:', archivos.length);
     res.json(archivos);
   } catch (error) {
@@ -177,7 +177,7 @@ app.get('/api/datos/archivos-recientes', async (req, res) => {
 app.get('/api/analisis/casos-region', async (req, res) => {
   try {
     const [datos] = await pool.execute(`
-      SELECT r.nombre as region, 
+      SELECT r.nombre as region,
              SUM(d.casos_confirmados) as total_casos
       FROM dato_epidemiologico d
       JOIN region r ON d.id_region = r.id_region
@@ -213,7 +213,7 @@ app.get('/api/analisis/tendencia-mensual', async (req, res) => {
 // ==================== ENDPOINT PARA SUBIR CSV ====================
 app.post('/api/modelo/subir-csv', async (req, res) => {
   console.log('Recibiendo archivo...');
-  
+
   if (!req.files || !req.files.archivo) {
     return res.status(400).json({ success: false, error: 'No se subió ningún archivo' });
   }
@@ -266,7 +266,7 @@ app.post('/api/modelo/predecir-dengue', async (req, res) => {
   try {
     const contenidoCSV = fs.readFileSync(rutaArchivo, 'utf-8');
     const lineas = contenidoCSV.split('\n').filter(l => l.trim());
-    
+
     if (lineas.length < 2) {
       return res.status(400).json({ success: false, error: 'El CSV no tiene suficientes datos' });
     }
@@ -276,24 +276,24 @@ app.post('/api/modelo/predecir-dengue', async (req, res) => {
 
     const colFecha = encabezados.findIndex(h => h.includes('FECHA'));
     const colCasos = encabezados.findIndex(h => h.includes('CASOS') || h.includes('CONFIRMADO'));
-    
+
     if (colFecha === -1 || colCasos === -1) {
-      return res.status(400).json({ 
-        success: false, 
+      return res.status(400).json({
+        success: false,
         error: 'No se encontraron las columnas necesarias',
         encabezados: encabezados
       });
     }
 
     const datosPorFecha = {};
-    
+
     for (let i = 1; i < lineas.length; i++) {
       const valores = lineas[i].split(',').map(v => v.trim());
-      
+
       if (valores.length > Math.max(colFecha, colCasos)) {
         const fechaStr = valores[colFecha];
         let fecha;
-        
+
         if (fechaStr.includes('/')) {
           const partes = fechaStr.split('/');
           if (partes.length === 3) {
@@ -325,17 +325,17 @@ app.post('/api/modelo/predecir-dengue', async (req, res) => {
     console.log(`Procesados ${datosHistoricos.length} registros`);
 
     if (datosHistoricos.length < 10) {
-      return res.status(400).json({ 
-        success: false, 
-        error: `Se necesitan al menos 10 registros. Solo: ${datosHistoricos.length}` 
+      return res.status(400).json({
+        success: false,
+        error: `Se necesitan al menos 10 registros. Solo: ${datosHistoricos.length}`
       });
     }
 
     const totalCasos = datosHistoricos.reduce((sum, d) => sum + d.casos_reales, 0);
     if (totalCasos === 0) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'No hay casos confirmados (todos son 0)' 
+      return res.status(400).json({
+        success: false,
+        error: 'No hay casos confirmados (todos son 0)'
       });
     }
 
@@ -420,8 +420,8 @@ app.post('/api/modelo/predecir-dengue', async (req, res) => {
 
   } catch (error) {
     console.error('Error en predicción:', error);
-    res.status(500).json({ 
-      success: false, 
+    res.status(500).json({
+      success: false,
       error: 'Error procesando modelo',
       detalle: error.message
     });
@@ -453,11 +453,11 @@ app.get('/api/reportes/resumen', async (req, res) => {
     const [totalCasos] = await pool.execute(
       'SELECT SUM(casos_confirmados) as total FROM dato_epidemiologico WHERE fecha >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)'
     );
-    
+
     const [totalDefunciones] = await pool.execute(
       'SELECT SUM(defunciones) as total FROM dato_epidemiologico WHERE fecha >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)'
     );
-    
+
     const [alertasActivas] = await pool.execute(
       'SELECT COUNT(*) as total FROM alerta WHERE estado = "activa"'
     );
@@ -495,70 +495,70 @@ app.get('/api/dashboard/alertas-recientes', async (req, res) => {
 
 // ==================== ENDPOINT PARA EVALUACIÓN DE RIESGO DE BROTE ====================
 app.post('/api/modelo/evaluar-riesgo', async (req, res) => {
-  const { 
-    estado_nombre, 
-    ti_lag_1w, 
-    ti_lag_4w, 
-    casos_lag_1w, 
-    casos_lag_4w, 
-    semana_del_anio, 
-    mes 
+  const {
+    estado_nombre,
+    ti_lag_1w,
+    ti_lag_4w,
+    casos_lag_1w,
+    casos_lag_4w,
+    semana_del_anio,
+    mes
   } = req.body;
 
   console.log('Evaluación de riesgo solicitada:', req.body);
 
   // Validar datos requeridos
   if (!estado_nombre || ti_lag_1w === undefined || casos_lag_1w === undefined) {
-    return res.status(400).json({ 
-      success: false, 
-      error: 'Faltan datos requeridos para la evaluación' 
+    return res.status(400).json({
+      success: false,
+      error: 'Faltan datos requeridos para la evaluación'
     });
   }
 
   try {
     // Algoritmo simplificado de evaluación de riesgo
     // Basado en las tasas de incidencia y número de casos
-    
+
     const tasaActual = parseFloat(ti_lag_1w) || 0;
     const tasaAnterior = parseFloat(ti_lag_4w) || 0;
     const casosActuales = parseInt(casos_lag_1w) || 0;
     const casosAnteriores = parseInt(casos_lag_4w) || 0;
-    
+
     // Calcular tendencia
     const tendenciaTasa = tasaActual - tasaAnterior;
     const tendenciaCasos = casosActuales - casosAnteriores;
-    
+
     // Factores de riesgo
     let puntuacionRiesgo = 0;
-    
+
     // Factor 1: Tasa de incidencia actual alta (>5 por 100,000 habitantes)
     if (tasaActual > 10) puntuacionRiesgo += 30;
     else if (tasaActual > 5) puntuacionRiesgo += 20;
     else if (tasaActual > 2) puntuacionRiesgo += 10;
-    
+
     // Factor 2: Tendencia creciente de tasa
     if (tendenciaTasa > 2) puntuacionRiesgo += 25;
     else if (tendenciaTasa > 0) puntuacionRiesgo += 15;
-    
+
     // Factor 3: Número de casos actual
     if (casosActuales > 50) puntuacionRiesgo += 25;
     else if (casosActuales > 20) puntuacionRiesgo += 15;
     else if (casosActuales > 10) puntuacionRiesgo += 10;
-    
+
     // Factor 4: Tendencia creciente de casos
     if (tendenciaCasos > 10) puntuacionRiesgo += 20;
     else if (tendenciaCasos > 0) puntuacionRiesgo += 10;
-    
+
     // Factor 5: Temporada de riesgo (meses de lluvia: mayo-octubre)
     const mesNum = parseInt(mes) || new Date().getMonth() + 1;
     if (mesNum >= 5 && mesNum <= 10) puntuacionRiesgo += 10;
-    
+
     // Normalizar a 0-100
     puntuacionRiesgo = Math.min(100, puntuacionRiesgo);
-    
+
     // Determinar clase de riesgo
     const riesgoClase = puntuacionRiesgo >= 50 ? 1 : 0;
-    
+
     // Generar mensaje
     let mensaje = '';
     if (puntuacionRiesgo >= 75) {
@@ -579,7 +579,7 @@ app.post('/api/modelo/evaluar-riesgo', async (req, res) => {
           'SELECT id_region FROM region WHERE nombre = ?',
           [estado_nombre]
         );
-        
+
         if (regiones.length > 0) {
           await pool.execute(
             'INSERT INTO alerta (nombre, id_enfermedad, id_region, nivel_riesgo, fecha_alerta, descripcion, estado) VALUES (?, ?, ?, ?, NOW(), ?, ?)',
@@ -616,9 +616,9 @@ app.post('/api/modelo/evaluar-riesgo', async (req, res) => {
 
   } catch (error) {
     console.error('Error en evaluación de riesgo:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: 'Error al evaluar el riesgo: ' + error.message 
+    res.status(500).json({
+      success: false,
+      error: 'Error al evaluar el riesgo: ' + error.message
     });
   }
 });
@@ -626,16 +626,16 @@ app.post('/api/modelo/evaluar-riesgo', async (req, res) => {
 // ==================== ENDPOINT PARA PREDICCIÓN AUTOMÁTICA ====================
 app.post('/api/modelo/predecir-riesgo-automatico', async (req, res) => {
   const { id_region: rawIdRegion, fecha_prediccion } = req.body;
-  
+
   // Asegurar que id_region sea un número
   const id_region = parseInt(rawIdRegion, 10);
 
   console.log('Predicción automática solicitada:', { id_region, fecha_prediccion, tipo: typeof id_region });
 
   if (!id_region || isNaN(id_region)) {
-    return res.status(400).json({ 
-      success: false, 
-      error: 'Debe seleccionar una región válida' 
+    return res.status(400).json({
+      success: false,
+      error: 'Debe seleccionar una región válida'
     });
   }
 
@@ -657,13 +657,13 @@ app.post('/api/modelo/predecir-riesgo-automatico', async (req, res) => {
     const [ultimaFechaResult] = await pool.execute(`
       SELECT MAX(fecha_fin_semana) as ultima_fecha FROM dato_epidemiologico WHERE id_region = ?
     `, [id_region]);
-    
+
     const ultimaFechaDisponible = ultimaFechaResult[0]?.ultima_fecha;
-    
+
     if (!ultimaFechaDisponible) {
-      return res.status(404).json({ 
-        success: false, 
-        error: 'No hay datos históricos para esta región. Por favor cargue datos primero.' 
+      return res.status(404).json({
+        success: false,
+        error: 'No hay datos históricos para esta región. Por favor cargue datos primero.'
       });
     }
 
@@ -671,7 +671,7 @@ app.post('/api/modelo/predecir-riesgo-automatico', async (req, res) => {
     // Esto asegura que siempre tengamos datos para analizar
     const fechaRef = new Date(ultimaFechaDisponible);
     console.log(`Usando fecha de referencia: ${fechaRef.toISOString().split('T')[0]} (última disponible en BD)`);
-    
+
     // Obtener casos de la semana pasada (últimos 7 días antes de la fecha)
     const [casosSemana1] = await pool.execute(`
       SELECT COALESCE(SUM(casos_confirmados), 0) as total_casos
@@ -690,7 +690,7 @@ app.post('/api/modelo/predecir-riesgo-automatico', async (req, res) => {
 
     // Obtener historial de las últimas 12 semanas para tendencia
     const [historial] = await pool.execute(`
-      SELECT 
+      SELECT
         WEEK(fecha_fin_semana) as semana,
         YEAR(fecha_fin_semana) as anio,
         SUM(casos_confirmados) as casos
@@ -715,30 +715,30 @@ app.post('/api/modelo/predecir-riesgo-automatico', async (req, res) => {
     // ========== ALGORITMO DE EVALUACIÓN DE RIESGO ==========
     const tendenciaTasa = tiLag1w - tiLag4w;
     const tendenciaCasos = casosLag1w - casosLag4w;
-    
+
     let puntuacionRiesgo = 0;
-    
+
     // Factor 1: Tasa de incidencia actual
     if (tiLag1w > 10) puntuacionRiesgo += 30;
     else if (tiLag1w > 5) puntuacionRiesgo += 20;
     else if (tiLag1w > 2) puntuacionRiesgo += 10;
-    
+
     // Factor 2: Tendencia de tasa
     if (tendenciaTasa > 2) puntuacionRiesgo += 25;
     else if (tendenciaTasa > 0) puntuacionRiesgo += 15;
-    
+
     // Factor 3: Casos actuales
     if (casosLag1w > 50) puntuacionRiesgo += 25;
     else if (casosLag1w > 20) puntuacionRiesgo += 15;
     else if (casosLag1w > 10) puntuacionRiesgo += 10;
-    
+
     // Factor 4: Tendencia de casos
     if (tendenciaCasos > 10) puntuacionRiesgo += 20;
     else if (tendenciaCasos > 0) puntuacionRiesgo += 10;
-    
+
     // Factor 5: Temporada (mayo-octubre)
     if (mes >= 5 && mes <= 10) puntuacionRiesgo += 10;
-    
+
     puntuacionRiesgo = Math.min(100, puntuacionRiesgo);
     const riesgoClase = puntuacionRiesgo >= 50 ? 1 : 0;
 
@@ -818,9 +818,9 @@ app.post('/api/modelo/predecir-riesgo-automatico', async (req, res) => {
 
   } catch (error) {
     console.error('Error en predicción automática:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: 'Error al realizar la predicción: ' + error.message 
+    res.status(500).json({
+      success: false,
+      error: 'Error al realizar la predicción: ' + error.message
     });
   }
 });
