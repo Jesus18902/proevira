@@ -183,6 +183,116 @@ const PrediccionAvanzada = () => {
         resultadosRef.current.scrollBy({ left: dir * Math.round(ancho * 0.9), behavior: 'smooth' });
     };
 
+    const [highlightSection, setHighlightSection] = useState(null);
+    const highlightTimerRef = useRef(null);
+
+    // ── Auto-scroll de secciones de resultados ──
+    const autoScrollTimerRef   = useRef(null);
+    const idleTimerRef         = useRef(null);
+    const autoScrollActiveRef  = useRef(false);
+    const isAutoScrollingRef   = useRef(false);
+    const currentSectionIdxRef = useRef(0);
+    const scrollContainerRef   = useRef(null);
+    const PA_SECCIONES = ['pa-separador', 'pa-metricas', 'pa-resumen', 'pa-comparativa', 'pa-simbologia', 'pa-slider', 'pa-tabla'];
+    const PA_DELAY = 7000;
+
+    const resetIdleTimer = () => {
+        if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+        idleTimerRef.current = setTimeout(() => {
+            startAutoScrollCycle(currentSectionIdxRef.current);
+        }, 5000);
+    };
+
+    const stopAutoScroll = () => {
+        autoScrollActiveRef.current = false;
+        if (autoScrollTimerRef.current) clearTimeout(autoScrollTimerRef.current);
+        if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+        setHighlightSection(null);
+    };
+
+    const getScrollContainer = (el) => {
+        let node = el?.parentElement;
+        while (node) {
+            const { overflowY } = window.getComputedStyle(node);
+            if (overflowY === 'auto' || overflowY === 'scroll') return node;
+            node = node.parentElement;
+        }
+        return window;
+    };
+
+    // Brillo estelar: anillo fino translúcido + halos difusos concéntricos
+    const STELLAR_GLOW = '0 0 0 2px rgba(99,179,255,0.18), 0 0 0 7px rgba(59,130,246,0.10), 0 0 18px 6px rgba(59,130,246,0.13), 0 0 40px 14px rgba(59,130,246,0.07)';
+    const glowStyle = (id) =>
+        highlightSection === id
+            ? { boxShadow: STELLAR_GLOW, transition: 'box-shadow 0.5s ease' }
+            : { transition: 'box-shadow 0.7s ease' };
+
+    const startAutoScrollCycle = (fromIdx) => {
+        stopAutoScroll();
+        const visibles = PA_SECCIONES.filter(id => document.getElementById(id));
+        if (visibles.length === 0) return;
+        autoScrollActiveRef.current = true;
+        currentSectionIdxRef.current = (fromIdx ?? 0) % visibles.length;
+        const step = () => {
+            if (!autoScrollActiveRef.current) return;
+            const secs = PA_SECCIONES.filter(id => document.getElementById(id));
+            const activeId = secs[currentSectionIdxRef.current % secs.length];
+            const el = document.getElementById(activeId);
+            if (el) {
+                const container = getScrollContainer(el);
+                scrollContainerRef.current = container;
+                const offset = el.getBoundingClientRect().top
+                    - (container === window ? 0 : container.getBoundingClientRect().top)
+                    + (container === window ? window.scrollY : container.scrollTop)
+                    - 16;
+                isAutoScrollingRef.current = true;
+                (container === window ? window : container).scrollTo({ top: offset, behavior: 'smooth' });
+                setTimeout(() => { isAutoScrollingRef.current = false; }, 1100);
+                // Activar brillo en la sección y apagarlo antes del siguiente step
+                setHighlightSection(activeId);
+                if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+                highlightTimerRef.current = setTimeout(() => setHighlightSection(null), PA_DELAY - 800);
+            }
+            currentSectionIdxRef.current = (currentSectionIdxRef.current + 1) % secs.length;
+            autoScrollTimerRef.current = setTimeout(step, PA_DELAY);
+        };
+        autoScrollTimerRef.current = setTimeout(step, 800);
+    };
+
+    // Detectar interacción del usuario: mouse, teclado, rueda, touch y scroll
+    const handleUserInteraction = () => {
+        if (isAutoScrollingRef.current) return; // ignorar eventos disparados por nuestro propio scroll
+        if (autoScrollActiveRef.current) stopAutoScroll();
+        resetIdleTimer();
+    };
+
+    // Adjuntar listener de scroll al contenedor cuando cambian los resultados
+    useEffect(() => {
+        if (!resumenModelo && !metricsValidacion) return;
+
+        // Encontrar el contenedor scrollable usando el primer elemento de resultados
+        const findContainer = () => {
+            const el = document.getElementById('pa-separador');
+            if (!el) return null;
+            return getScrollContainer(el);
+        };
+
+        const container = findContainer() ?? window;
+        scrollContainerRef.current = container;
+        const target = container === window ? window : container;
+        target.addEventListener('scroll', handleUserInteraction, { passive: true });
+
+        const t = setTimeout(() => startAutoScrollCycle(0), 700);
+        return () => {
+            clearTimeout(t);
+            stopAutoScroll();
+            if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+            if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+            target.removeEventListener('scroll', handleUserInteraction);
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [resumenModelo, metricsValidacion]);
+
     // Función para guardar predicción en la base de datos
     const guardarPrediccion = async () => {
         if (predicciones.length === 0) {
@@ -247,14 +357,34 @@ const PrediccionAvanzada = () => {
     };
 
     return (
-        <div className="p-6 max-w-7xl mx-auto">
+        <div
+            className="p-6 max-w-7xl mx-auto"
+            onMouseMove={handleUserInteraction}
+            onWheel={handleUserInteraction}
+            onTouchStart={handleUserInteraction}
+            onKeyDown={handleUserInteraction}
+        >
             {/* ═══════════════════════════════════════════════════════════════
                 HEADER PRINCIPAL - Con mejor simbología y negritas
             ═══════════════════════════════════════════════════════════════ */}
-            <div className="mb-8 bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-700 p-8 rounded-2xl text-white shadow-2xl">
+            <div className="mb-8 bg-gradient-to-br from-blue-700 via-blue-800 to-indigo-900 p-8 rounded-2xl text-white"
+                 style={{ boxShadow: '0 8px 32px rgba(30,64,175,0.45)' }}>
                 <div className="flex items-center gap-6">
-                    <div className="w-20 h-20 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm">
-                        <span className="text-5xl">🙌</span>
+                    <div className="w-20 h-20 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm flex-shrink-0">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="52" height="52" fill="none">
+                            {/* documento base */}
+                            <rect x="8" y="4" width="36" height="46" rx="4" fill="white" fillOpacity="0.15" stroke="white" strokeOpacity="0.6" strokeWidth="2"/>
+                            {/* líneas de texto simuladas */}
+                            <line x1="15" y1="15" x2="37" y2="15" stroke="white" strokeOpacity="0.5" strokeWidth="2" strokeLinecap="round"/>
+                            <line x1="15" y1="22" x2="37" y2="22" stroke="white" strokeOpacity="0.5" strokeWidth="2" strokeLinecap="round"/>
+                            <line x1="15" y1="29" x2="28" y2="29" stroke="white" strokeOpacity="0.5" strokeWidth="2" strokeLinecap="round"/>
+                            {/* gráfica de tendencia curva */}
+                            <path d="M12 52 Q20 38 28 44 Q36 50 44 30 L52 18" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                            {/* punto final (predicción) */}
+                            <circle cx="52" cy="18" r="3.5" fill="white"/>
+                            {/* flecha de proyección */}
+                            <polyline points="49,13 55,13 55,21" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                        </svg>
                     </div>
                     <div>
                         <h1 className="text-3xl font-black mb-2">
@@ -373,7 +503,8 @@ const PrediccionAvanzada = () => {
                     <button
                         type="submit"
                         disabled={loading || loadingRegiones}
-                        className="mt-6 px-10 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-black text-lg rounded-xl hover:from-blue-700 hover:to-indigo-700 disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl hover:scale-105 active:scale-95 flex items-center gap-3"
+                        className="mt-6 px-10 py-4 bg-gradient-to-r from-blue-500 to-cyan-500 text-white font-black text-lg rounded-xl hover:from-blue-600 hover:to-cyan-600 disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl hover:scale-105 active:scale-95 flex items-center gap-3"
+                        style={{ boxShadow: '0 4px 14px rgba(6,182,212,0.45)' }}
                     >
                         {loading ? (
                             <>
@@ -400,46 +531,68 @@ const PrediccionAvanzada = () => {
                 </div>
             )}
 
+            {/* ── Separador visual de resultados ── */}
+            {(resumenModelo || metricsValidacion) && (
+                <div id="pa-separador" className="relative flex items-center my-8" style={glowStyle('pa-separador')}>
+                    <div className="flex-grow border-t-2 border-dashed border-teal-200"></div>
+                    <div className="mx-4 flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-teal-600 to-emerald-600 text-white text-sm font-bold rounded-full shadow-md whitespace-nowrap"
+                         style={{ boxShadow: '0 4px 14px rgba(13,148,136,0.35)' }}>
+                        <span>📊</span>
+                        <span>Resultados de la Predicción</span>
+                    </div>
+                    <div className="flex-grow border-t-2 border-dashed border-teal-200"></div>
+                </div>
+            )}
+
             {/* Métricas de Validación */}
             {metricsValidacion && (
-                <div className="mb-8 bg-gradient-to-r from-blue-500 to-indigo-600 p-6 rounded-xl text-white shadow-xl">
-                    <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-                        ✅ Validación del Modelo vs Datos Reales
-                    </h3>
-                    <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-                        <div className="bg-white/20 p-4 rounded-xl text-center">
-                            <p className="text-3xl font-bold">{metricsValidacion.registros_validados}</p>
-                            <p className="text-blue-100 text-sm">Semanas Validadas</p>
+                <div id="pa-metricas" className="mb-8 rounded-2xl overflow-hidden"
+                     style={{ boxShadow: highlightSection === 'pa-metricas' ? STELLAR_GLOW : '0 8px 32px rgba(15,23,42,0.18)', transition: 'box-shadow 0.5s ease' }}>
+                    {/* Header oscuro */}
+                    <div className="px-6 py-4 flex items-center gap-3"
+                         style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)' }}>
+                        <div className="w-8 h-8 rounded-lg flex items-center justify-center"
+                             style={{ background: 'linear-gradient(135deg,#22d3ee,#6366f1)' }}>
+                            <svg viewBox="0 0 20 20" fill="white" width="16" height="16"><path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zm6-4a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zm6-3a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z"/></svg>
                         </div>
-                        <div className="bg-white/20 p-4 rounded-xl text-center">
-                            <p className="text-3xl font-bold">{metricsValidacion.precision_general}%</p>
-                            <p className="text-blue-100 text-sm">Precisión Casos</p>
-                        </div>
-                        <div className="bg-white/20 p-4 rounded-xl text-center">
-                            <p className="text-3xl font-bold">{metricsValidacion.mae}</p>
-                            <p className="text-blue-100 text-sm">MAE (Error Abs.)</p>
-                        </div>
-                        <div className="bg-white/20 p-4 rounded-xl text-center">
-                            <p className="text-3xl font-bold">{metricsValidacion.mape}%</p>
-                            <p className="text-blue-100 text-sm">MAPE (Error %)</p>
-                        </div>
-                        <div className="bg-white/20 p-4 rounded-xl text-center">
-                            <p className="text-3xl font-bold">{metricsValidacion.rmse}</p>
-                            <p className="text-blue-100 text-sm">RMSE</p>
-                        </div>
-                        <div className="bg-white/20 p-4 rounded-xl text-center">
-                            <p className="text-3xl font-bold">{metricsValidacion.r2}%</p>
-                            <p className="text-blue-100 text-sm">R² (Ajuste)</p>
+                        <div>
+                            <h3 className="text-white font-black text-lg leading-tight">Validación del Modelo</h3>
+                            <p className="text-slate-400 text-xs">Comparación vs Datos Reales</p>
                         </div>
                     </div>
-                    <div className="mt-4 p-3 bg-white/10 rounded-lg">
-                        <p className="text-sm">
-                            <strong>📊 Nota importante:</strong> La <strong>Probabilidad de Riesgo</strong> (calculada por Regresión Lineal/Polinomial con R² 95%)
-                            es el indicador más confiable. Los <strong>Casos Estimados</strong> son aproximaciones basadas en datos históricos
-                            y pueden variar significativamente en épocas de cambios bruscos.
-                            {parseFloat(metricsValidacion.mape) <= 30 ?
-                                ' ✅ El error de estimación está en rango aceptable.' :
-                                ' ⚠️ Se recomienda enfocarse en el nivel de riesgo más que en el número exacto de casos.'}
+                    {/* Grid de métricas con fondo oscuro */}
+                    <div className="grid grid-cols-2 md:grid-cols-6 gap-px"
+                         style={{ background: '#1e293b' }}>
+                        {[
+                            { val: metricsValidacion.registros_validados, label: 'Semanas\nValidadas',  accent: '#22d3ee', bg: '#0e7490' },
+                            { val: `${metricsValidacion.precision_general}%`, label: 'Precisión\nCasos',  accent: '#34d399', bg: '#065f46' },
+                            { val: metricsValidacion.mae,  label: 'MAE\nError Abs.',   accent: '#fbbf24', bg: '#92400e' },
+                            { val: `${metricsValidacion.mape}%`, label: 'MAPE\nError %', accent: '#f87171', bg: '#7f1d1d' },
+                            { val: metricsValidacion.rmse, label: 'RMSE',              accent: '#a78bfa', bg: '#4c1d95' },
+                            { val: `${metricsValidacion.r2}%`, label: 'R²\nAjuste',    accent: '#fb923c', bg: '#7c2d12' },
+                        ].map(({ val, label, accent, bg }, i) => (
+                            <div key={i} className="flex flex-col items-center justify-center py-5 px-3 text-center"
+                                 style={{ background: '#0f172a' }}>
+                                <div className="w-10 h-10 rounded-full flex items-center justify-center mb-2"
+                                     style={{ background: bg + '55', border: `2px solid ${accent}40` }}>
+                                    <span className="font-black text-sm" style={{ color: accent }}>{i + 1}</span>
+                                </div>
+                                <p className="font-black text-2xl" style={{ color: accent }}>{val}</p>
+                                <p className="text-slate-400 text-xs mt-1 whitespace-pre-line leading-tight">{label}</p>
+                            </div>
+                        ))}
+                    </div>
+                    {/* Nota */}
+                    <div className="px-5 py-3 flex items-start gap-3"
+                         style={{ background: 'linear-gradient(90deg,#0f172a,#1e293b)' }}>
+                        <div className="w-1 self-stretch rounded-full flex-shrink-0"
+                             style={{ background: parseFloat(metricsValidacion.mape) <= 30 ? '#34d399' : '#fbbf24' }}></div>
+                        <p className="text-slate-300 text-xs leading-relaxed">
+                            La <strong className="text-white">Probabilidad de Riesgo</strong> es el indicador más confiable (R² 95%).
+                            Los casos estimados son orientativos y pueden variar en cambios bruscos.
+                            {parseFloat(metricsValidacion.mape) <= 30
+                                ? <span className="text-emerald-400 font-semibold"> Error de estimación en rango aceptable.</span>
+                                : <span className="text-amber-400 font-semibold"> Enfócate en el nivel de riesgo más que en el número exacto.</span>}
                         </p>
                     </div>
                 </div>
@@ -447,48 +600,78 @@ const PrediccionAvanzada = () => {
 
             {/* Dashboard de Resultados */}
             {resumenModelo && (
-                <div className="mb-8">
+                <div id="pa-resumen" className="mb-8" style={glowStyle('pa-resumen')}>
                     {/* Tarjetas de resumen */}
                     <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-                        <div className="bg-white p-4 rounded-xl border shadow text-center">
-                            <p className="text-3xl font-bold text-indigo-600">{resumenModelo.total_predicciones}</p>
-                            <p className="text-sm font-bold text-gray-700">Predicciones</p>
+                        {/* Total Predicciones */}
+                        <div className="relative rounded-xl overflow-hidden bg-white border border-indigo-100"
+                             style={{ boxShadow: '0 2px 10px rgba(79,70,229,0.10)' }}>
+                            <div className="h-1" style={{ background: 'linear-gradient(90deg,#6366f1,#818cf8)' }}></div>
+                            <div className="p-4 text-center">
+                                <p className="text-3xl font-black text-indigo-600">{resumenModelo.total_predicciones}</p>
+                                <p className="text-gray-500 text-xs font-semibold uppercase tracking-wider mt-1">Predicciones</p>
+                            </div>
                         </div>
-                        <div className="bg-white p-4 rounded-xl border shadow text-center">
-                            <p className="text-3xl font-bold text-purple-600">{resumenModelo.promedio_riesgo}%</p>
-                            <p className="text-sm font-bold text-gray-700">Riesgo Promedio</p>
+                        {/* Riesgo Promedio */}
+                        <div className="relative rounded-xl overflow-hidden bg-white border border-purple-100"
+                             style={{ boxShadow: '0 2px 10px rgba(147,51,234,0.10)' }}>
+                            <div className="h-1" style={{ background: 'linear-gradient(90deg,#9333ea,#c084fc)' }}></div>
+                            <div className="p-4 text-center">
+                                <p className="text-3xl font-black text-purple-600">{resumenModelo.promedio_riesgo}%</p>
+                                <p className="text-gray-500 text-xs font-semibold uppercase tracking-wider mt-1">Riesgo Promedio</p>
+                            </div>
                         </div>
-                        <div className="bg-white p-4 rounded-xl border shadow text-center">
-                            <p className="text-3xl font-bold text-red-600">{resumenModelo.max_riesgo}%</p>
-                            <p className="text-sm font-bold text-gray-700">Riesgo Máximo</p>
+                        {/* Riesgo Máximo */}
+                        <div className="relative rounded-xl overflow-hidden bg-white border border-red-100"
+                             style={{ boxShadow: '0 2px 10px rgba(220,38,38,0.10)' }}>
+                            <div className="h-1" style={{ background: 'linear-gradient(90deg,#dc2626,#f87171)' }}></div>
+                            <div className="p-4 text-center">
+                                <p className="text-3xl font-black text-red-600">{resumenModelo.max_riesgo}%</p>
+                                <p className="text-gray-500 text-xs font-semibold uppercase tracking-wider mt-1">Riesgo Máximo</p>
+                            </div>
                         </div>
-                        <div className="bg-white p-4 rounded-xl border shadow text-center">
-                            <p className="text-3xl font-bold text-green-600">{resumenModelo.min_riesgo}%</p>
-                            <p className="text-sm font-bold text-gray-700">Riesgo Mínimo</p>
+                        {/* Riesgo Mínimo */}
+                        <div className="relative rounded-xl overflow-hidden bg-white border border-green-100"
+                             style={{ boxShadow: '0 2px 10px rgba(22,163,74,0.10)' }}>
+                            <div className="h-1" style={{ background: 'linear-gradient(90deg,#16a34a,#4ade80)' }}></div>
+                            <div className="p-4 text-center">
+                                <p className="text-3xl font-black text-green-600">{resumenModelo.min_riesgo}%</p>
+                                <p className="text-gray-500 text-xs font-semibold uppercase tracking-wider mt-1">Riesgo Mínimo</p>
+                            </div>
                         </div>
-                        <div className="bg-white p-4 rounded-xl border-2 border-blue-500 shadow text-center">
-                            <p className="text-3xl font-bold text-blue-600">{resumenModelo.confiabilidad}%</p>
-                            <p className="text-sm font-bold text-gray-700">Precisión Riesgo</p>
-                            <p className="text-xs text-blue-500">{resumenModelo.modelo || 'Regresión Lineal'}</p>
+                        {/* Precisión */}
+                        <div className="relative rounded-xl overflow-hidden bg-white border border-teal-200"
+                             style={{ boxShadow: '0 2px 10px rgba(13,148,136,0.12)' }}>
+                            <div className="h-1" style={{ background: 'linear-gradient(90deg,#0d9488,#2dd4bf)' }}></div>
+                            <div className="p-4 text-center">
+                                <p className="text-3xl font-black text-teal-600">{resumenModelo.confiabilidad}%</p>
+                                <p className="text-gray-500 text-xs font-semibold uppercase tracking-wider mt-1">Precisión Riesgo</p>
+                                <p className="text-teal-400 text-xs mt-0.5 truncate">{resumenModelo.modelo || 'Reg. Lineal'}</p>
+                            </div>
                         </div>
                     </div>
 
                     {/* Nota sobre el modelo */}
-                    <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                        <p className="text-sm text-blue-800">
-                            <strong>Guía de uso:</strong> El modelo de {resumenModelo.modelo || 'Regresión Lineal'} tiene <strong>R² {resumenModelo.confiabilidad}%</strong> para predecir
-                            <strong> riesgo de brote</strong> (Crítico/Alto/Moderado/Bajo). Use el nivel de riesgo para tomar decisiones
-                            de prevención. Los casos estimados son orientativos.
-                        </p>
+                    <div className="mt-4 rounded-xl overflow-hidden flex"
+                         style={{ boxShadow: '0 2px 12px rgba(13,148,136,0.15)' }}>
+                        <div className="w-1.5 flex-shrink-0" style={{ background: 'linear-gradient(to bottom,#0d9488,#10b981)' }}></div>
+                        <div className="flex-1 px-4 py-3 bg-gradient-to-r from-slate-50 to-teal-50 border border-l-0 border-teal-100 rounded-r-xl">
+                            <p className="text-sm text-slate-700">
+                                <strong className="text-teal-700">Guía de uso:</strong> El modelo <strong className="text-teal-700">{resumenModelo.modelo || 'Regresión Lineal'}</strong> tiene <strong className="text-teal-700">R² {resumenModelo.confiabilidad}%</strong> para predecir
+                                <strong> riesgo de brote</strong> (Crítico / Alto / Moderado / Bajo). Use el nivel de riesgo para tomar decisiones
+                                de prevención. Los casos estimados son orientativos.
+                            </p>
+                        </div>
                     </div>
 
                     {/* ═══════════════════════════════════════════════════════════════
                         COMPARATIVA DE MODELOS - Lineal vs Polinomial
                     ═══════════════════════════════════════════════════════════════ */}
                     {predicciones.length > 0 && predicciones[0].comparativa && (
-                        <div className="mt-6 bg-white p-6 rounded-xl border-2 border-indigo-100 shadow-lg">
+                        <div id="pa-comparativa" className="mt-6 bg-white p-6 rounded-xl border border-gray-100"
+                             style={{ boxShadow: highlightSection === 'pa-comparativa' ? STELLAR_GLOW : '0 2px 10px rgba(0,0,0,0.07), 0 1px 3px rgba(0,0,0,0.04)', transition: 'box-shadow 0.5s ease' }}>
                             <div className="flex items-center gap-3 mb-5">
-                                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center">
+                                <div className="w-10 h-10 bg-gradient-to-br from-teal-500 to-emerald-600 rounded-xl flex items-center justify-center">
                                     <span className="text-white text-lg">⚖️</span>
                                 </div>
                                 <div>
@@ -502,28 +685,28 @@ const PrediccionAvanzada = () => {
                                 {predicciones[0].comparativa.lineal && (
                                     <div className={`relative rounded-xl p-5 border-2 transition-all ${
                                         predicciones[0].comparativa.mejor_modelo === 'lineal'
-                                            ? 'border-blue-400 bg-gradient-to-br from-blue-50 to-blue-100 shadow-md'
+                                            ? 'border-teal-400 bg-gradient-to-br from-teal-50 to-teal-100 shadow-md'
                                             : 'border-gray-200 bg-gray-50'
                                     }`}>
                                         {predicciones[0].comparativa.mejor_modelo === 'lineal' && (
-                                            <span className="absolute -top-3 right-4 px-3 py-1 bg-blue-600 text-white text-xs font-bold rounded-full shadow">
+                                            <span className="absolute -top-3 right-4 px-3 py-1 bg-teal-600 text-white text-xs font-bold rounded-full shadow">
                                                 ★ Mejor Modelo
                                             </span>
                                         )}
                                         <div className="flex items-center gap-2 mb-4">
-                                            <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                                            <div className="w-3 h-3 bg-teal-500 rounded-full"></div>
                                             <h4 className="font-bold text-gray-800">Regresión Lineal</h4>
                                         </div>
                                         <div className="space-y-3">
                                             <div className="flex justify-between items-center">
                                                 <span className="text-sm text-gray-600">Casos Predichos</span>
-                                                <span className="text-2xl font-black text-blue-700">
+                                                <span className="text-2xl font-black text-teal-700">
                                                     {predicciones[0].comparativa.lineal.casos_predichos}
                                                 </span>
                                             </div>
                                             <div className="flex justify-between items-center">
                                                 <span className="text-sm text-gray-600">R² Score</span>
-                                                <span className="text-lg font-bold text-blue-600">
+                                                <span className="text-lg font-bold text-teal-600">
                                                     {(predicciones[0].comparativa.lineal.r2 * 100).toFixed(1)}%
                                                 </span>
                                             </div>
@@ -537,7 +720,7 @@ const PrediccionAvanzada = () => {
                                             <div className="pt-2">
                                                 <div className="w-full bg-gray-200 rounded-full h-2.5">
                                                     <div
-                                                        className="bg-blue-500 h-2.5 rounded-full transition-all duration-500"
+                                                        className="bg-teal-500 h-2.5 rounded-full transition-all duration-500"
                                                         style={{ width: `${(predicciones[0].comparativa.lineal.r2 * 100)}%` }}
                                                     ></div>
                                                 </div>
@@ -603,9 +786,9 @@ const PrediccionAvanzada = () => {
                                             <tr className="border-b-2 border-gray-200">
                                                 <th className="px-3 py-2 text-left text-gray-600 font-semibold">Semana</th>
                                                 <th className="px-3 py-2 text-left text-gray-600 font-semibold">Fecha</th>
-                                                <th className="px-3 py-2 text-center font-semibold text-blue-700">
+                                                <th className="px-3 py-2 text-center font-semibold text-teal-700">
                                                     <div className="flex items-center justify-center gap-1">
-                                                        <span className="w-2 h-2 bg-blue-500 rounded-full"></span> Lineal
+                                                        <span className="w-2 h-2 bg-teal-500 rounded-full"></span> Lineal
                                                     </div>
                                                 </th>
                                                 <th className="px-3 py-2 text-center font-semibold text-indigo-700">
@@ -633,7 +816,7 @@ const PrediccionAvanzada = () => {
                                                     <tr key={idx} className="hover:bg-gray-50">
                                                         <td className="px-3 py-2 font-medium text-gray-800">S{pred.semana}</td>
                                                         <td className="px-3 py-2 text-gray-500">{pred.fecha}</td>
-                                                        <td className={`px-3 py-2 text-center font-bold ${mejor === 'lineal' ? 'text-blue-700 bg-blue-50' : 'text-gray-600'}`}>
+                                                        <td className={`px-3 py-2 text-center font-bold ${mejor === 'lineal' ? 'text-teal-700 bg-teal-50' : 'text-gray-600'}`}>
                                                             {lineal ?? '—'}
                                                         </td>
                                                         <td className={`px-3 py-2 text-center font-bold ${mejor === 'polinomial' ? 'text-indigo-700 bg-indigo-50' : 'text-gray-600'}`}>
@@ -654,7 +837,7 @@ const PrediccionAvanzada = () => {
                                                             )}
                                                         </td>
                                                         <td className="px-3 py-2 text-center">
-                                                            <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${mejor === 'lineal' ? 'bg-blue-100 text-blue-700' : 'bg-indigo-100 text-indigo-700'}`}>
+                                                            <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${mejor === 'lineal' ? 'bg-teal-100 text-teal-700' : 'bg-indigo-100 text-indigo-700'}`}>
                                                                 {mejor === 'lineal' ? 'Lineal' : 'Polinomial'}
                                                             </span>
                                                         </td>
@@ -667,8 +850,8 @@ const PrediccionAvanzada = () => {
                             )}
 
                             {/* Nota informativa */}
-                            <div className="mt-4 p-3 bg-indigo-50 border border-indigo-200 rounded-lg">
-                                <p className="text-xs text-indigo-800">
+                            <div className="mt-4 p-3 bg-teal-50 border border-teal-200 rounded-lg">
+                                <p className="text-xs text-teal-800">
                                     <strong>💡 Nota:</strong> Ambos modelos se ejecutan en cada predicción. El sistema selecciona automáticamente
                                     el que tiene <strong>mejor R²</strong> para los casos reportados. Una diferencia pequeña entre modelos indica
                                     mayor confiabilidad en el resultado.
@@ -678,7 +861,8 @@ const PrediccionAvanzada = () => {
                     )}
 
                     {/* SIMBOLOGÍA DE NIVELES DE RIESGO */}
-                    <div className="mt-6 bg-white p-5 rounded-xl border shadow-lg">
+                    <div id="pa-simbologia" className="mt-6 bg-white p-5 rounded-xl border border-gray-100"
+                         style={{ boxShadow: highlightSection === 'pa-simbologia' ? STELLAR_GLOW : '0 2px 10px rgba(0,0,0,0.07), 0 1px 3px rgba(0,0,0,0.04)', transition: 'box-shadow 0.5s ease' }}>
                         <h3 className="text-lg font-bold text-gray-800 mb-4">Simbología de Niveles de Riesgo</h3>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                             <div className="flex items-center gap-3 p-3 bg-red-50 rounded-lg border border-red-200">
@@ -713,7 +897,8 @@ const PrediccionAvanzada = () => {
                     </div>
 
                     {/* Slider de Resultados de Predicción */}
-                    <div className="bg-white p-6 rounded-xl border shadow-lg mb-6 mt-6">
+                    <div id="pa-slider" className="bg-white p-6 rounded-xl border border-gray-100 mb-6 mt-6"
+                         style={{ boxShadow: highlightSection === 'pa-slider' ? STELLAR_GLOW : '0 2px 10px rgba(0,0,0,0.07), 0 1px 3px rgba(0,0,0,0.04)', transition: 'box-shadow 0.5s ease' }}>
                         <h3 className="text-lg font-bold mb-4">Resultados de Predicción - {resumenModelo.estado}</h3>
                         <div className="relative">
                             {/* Flecha izquierda */}
@@ -739,12 +924,18 @@ const PrediccionAvanzada = () => {
                                     return (
                                         <div
                                             key={idx}
-                                            className={`flex-none w-64 p-5 rounded-xl border-2 shadow-lg snap-center transition-all hover:scale-105 ${
+                                            className={`flex-none w-64 p-5 rounded-xl border-2 snap-center transition-all hover:scale-105 ${
                                                 riesgo.nivel === 'Crítico' ? 'bg-gradient-to-br from-red-50 to-red-100 border-red-300' :
                                                 riesgo.nivel === 'Alto' ? 'bg-gradient-to-br from-orange-50 to-orange-100 border-orange-300' :
                                                 riesgo.nivel === 'Moderado' ? 'bg-gradient-to-br from-yellow-50 to-yellow-100 border-yellow-300' :
                                                 'bg-gradient-to-br from-green-50 to-green-100 border-green-300'
                                             }`}
+                                            style={{
+                                                boxShadow: riesgo.nivel === 'Crítico' ? '0 6px 20px rgba(239,68,68,0.4)' :
+                                                           riesgo.nivel === 'Alto'    ? '0 6px 20px rgba(249,115,22,0.4)' :
+                                                           riesgo.nivel === 'Moderado'? '0 6px 20px rgba(234,179,8,0.45)' :
+                                                                                        '0 6px 20px rgba(34,197,94,0.4)'
+                                            }}
                                         >
                                             {/* Header de la tarjeta */}
                                             <div className="flex justify-between items-center mb-3">
@@ -775,7 +966,7 @@ const PrediccionAvanzada = () => {
 
                                             {/* Casos estimados */}
                                             <div className="text-center p-2 bg-white/60 rounded-lg">
-                                                <p className="text-2xl font-bold text-blue-600">{casosEstimados}</p>
+                                                <p className="text-2xl font-bold text-teal-600">{casosEstimados}</p>
                                                 <p className="text-xs text-gray-500">Casos Estimados</p>
                                             </div>
                                         </div>
@@ -804,24 +995,26 @@ const PrediccionAvanzada = () => {
                     </div>
 
                     {/* Información del modelo */}
-                    <div className="bg-gradient-to-r from-blue-500 to-indigo-500 p-6 rounded-xl text-white shadow-lg mb-6">
-                        <h3 className="text-lg font-bold mb-4">Información del Modelo</h3>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            <div>
-                                <p className="text-blue-100 text-sm">Algoritmo</p>
-                                <p className="font-bold text-lg">{resumenModelo.modelo}</p>
-                            </div>
-                            <div>
-                                <p className="text-blue-100 text-sm">Datos de Entrenamiento</p>
-                                <p className="font-bold text-lg">2020-2025</p>
-                            </div>
-                            <div>
-                                <p className="text-blue-100 text-sm">Registros Históricos</p>
-                                <p className="font-bold text-lg">9,760+</p>
-                            </div>
-                            <div>
-                                <p className="text-blue-100 text-sm">Precisión Estimada</p>
-                                <p className="font-bold text-lg">{resumenModelo.confiabilidad}%</p>
+                    <div className="rounded-2xl overflow-hidden mb-6"
+                         style={{ background: 'linear-gradient(135deg,#0f172a 0%,#1e293b 100%)', boxShadow: '0 8px 28px rgba(15,23,42,0.35)' }}>
+                        {/* Barra de acento superior */}
+                        <div className="h-1" style={{ background: 'linear-gradient(90deg,#6366f1,#0ea5e9,#22d3ee)' }}></div>
+                        <div className="p-6">
+                            <p className="text-slate-400 text-xs font-semibold uppercase tracking-widest mb-4">Información del Modelo</p>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                {[
+                                    { label: 'Algoritmo',             val: resumenModelo.modelo,        accent: '#818cf8' },
+                                    { label: 'Datos Entrenamiento',   val: '2020 – 2025',               accent: '#34d399' },
+                                    { label: 'Registros Históricos',  val: '9,760+',                    accent: '#fbbf24' },
+                                    { label: 'Precisión Estimada',    val: `${resumenModelo.confiabilidad}%`, accent: '#fb923c' },
+                                ].map(({ label, val, accent }, i) => (
+                                    <div key={i} className="rounded-xl p-4"
+                                         style={{ background: 'rgba(255,255,255,0.04)', border: `1px solid ${accent}30` }}>
+                                        <p className="text-xs font-semibold mb-1" style={{ color: accent + 'cc' }}>{label}</p>
+                                        <p className="font-black text-xl text-white leading-tight">{val}</p>
+                                        <div className="mt-2 h-0.5 rounded-full w-8" style={{ background: accent }}></div>
+                                    </div>
+                                ))}
                             </div>
                         </div>
                     </div>
@@ -830,7 +1023,8 @@ const PrediccionAvanzada = () => {
 
             {/* Tabla detallada con comparación */}
             {predicciones.length > 0 && (
-                <div className="bg-white rounded-xl border shadow-lg overflow-hidden">
+                <div id="pa-tabla" className="bg-white rounded-xl border border-gray-100 overflow-hidden"
+                     style={{ boxShadow: highlightSection === 'pa-tabla' ? STELLAR_GLOW : '0 2px 10px rgba(0,0,0,0.07), 0 1px 3px rgba(0,0,0,0.04)', transition: 'box-shadow 0.5s ease' }}>
                     <div className="p-4 bg-gray-50 border-b flex justify-between items-center flex-wrap gap-3">
                         <h3 className="text-lg font-bold">Detalle de Predicciones vs Datos Reales</h3>
                         <div className="flex items-center gap-3">
@@ -843,7 +1037,7 @@ const PrediccionAvanzada = () => {
                             <button
                                 onClick={guardarPrediccion}
                                 disabled={guardando}
-                                className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-medium rounded-lg hover:from-blue-700 hover:to-indigo-700 disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed flex items-center gap-2 shadow-md transition-all"
+                                className="px-4 py-2 bg-gradient-to-r from-teal-600 to-emerald-600 text-white font-medium rounded-lg hover:from-teal-700 hover:to-emerald-700 disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed flex items-center gap-2 shadow-md transition-all"
                             >
                                 {guardando ? (
                                     <>
@@ -883,7 +1077,7 @@ const PrediccionAvanzada = () => {
                                     <th className="px-4 py-3 text-left text-sm font-semibold text-gray-600">Fecha</th>
                                     <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">Prob. Riesgo</th>
                                     <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600">Nivel</th>
-                                    <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600 bg-blue-50">
+                                    <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600 bg-teal-50">
                                         Casos Estimados
                                     </th>
                                     <th className="px-4 py-3 text-center text-sm font-semibold text-gray-600 bg-green-50">
@@ -916,8 +1110,8 @@ const PrediccionAvanzada = () => {
                                             <td className={`px-4 py-3 text-center font-semibold ${riesgo.textColor}`}>
                                                 {riesgo.nivel}
                                             </td>
-                                            <td className="px-4 py-3 text-center bg-blue-50">
-                                                <span className="font-bold text-blue-700 text-lg">{casosEstimados}</span>
+                                            <td className="px-4 py-3 text-center bg-teal-50">
+                                                <span className="font-bold text-teal-700 text-lg">{casosEstimados}</span>
                                             </td>
                                             <td className="px-4 py-3 text-center bg-green-50">
                                                 {casosReales !== undefined ? (
@@ -928,7 +1122,7 @@ const PrediccionAvanzada = () => {
                                             </td>
                                             <td className="px-4 py-3 text-center bg-purple-50">
                                                 {diferencia !== null ? (
-                                                    <span className={`font-bold ${diferencia > 0 ? 'text-orange-600' : diferencia < 0 ? 'text-blue-600' : 'text-green-600'}`}>
+                                                    <span className={`font-bold ${diferencia > 0 ? 'text-orange-600' : diferencia < 0 ? 'text-teal-600' : 'text-green-600'}`}>
                                                         {diferencia > 0 ? '+' : ''}{diferencia}
                                                     </span>
                                                 ) : (

@@ -116,16 +116,23 @@ const EntrenamientoModelos = () => {
   const EstadoModelo = ({ tipo, info }) => {
     const estaActivo = info.cargado && info.existe;
 
+    const cardStyle = estaActivo
+      ? { boxShadow: '0 6px 24px rgba(249,115,22,0.25)' }
+      : { boxShadow: '0 4px 14px rgba(59,130,246,0.15)' };
+
     return (
-      <div className={`border-2 rounded-xl p-6 shadow-lg transition-all hover:shadow-xl ${
-        estaActivo
-          ? 'bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-300'
-          : 'bg-gradient-to-br from-slate-50 to-slate-100 border-slate-300'
-      }`}>
+      <div
+        className={`border-2 rounded-xl p-6 transition-all hover:scale-[1.02] ${
+          estaActivo
+            ? 'bg-gradient-to-br from-orange-50 via-amber-50 to-orange-100 border-orange-300'
+            : 'bg-gradient-to-br from-blue-50 via-indigo-50 to-blue-100 border-blue-200'
+        }`}
+        style={cardStyle}
+      >
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
-            <div className={`p-3 rounded-xl ${estaActivo ? 'bg-blue-100' : 'bg-slate-200'}`}>
-              <Brain className={`w-8 h-8 ${estaActivo ? 'text-blue-600' : 'text-slate-400'}`} />
+            <div className={`p-3 rounded-xl ${estaActivo ? 'bg-orange-200' : 'bg-blue-100'}`}>
+              <Brain className={`w-8 h-8 ${estaActivo ? 'text-orange-600' : 'text-blue-500'}`} />
             </div>
             <div>
               <h3 className="text-lg font-bold text-gray-800">
@@ -134,40 +141,56 @@ const EntrenamientoModelos = () => {
               <p className="text-sm text-gray-500">{info.archivo}</p>
             </div>
           </div>
-          <div className={`p-2 rounded-full ${estaActivo ? 'bg-blue-100' : 'bg-slate-200'}`}>
+          <div className={`p-2 rounded-full ${estaActivo ? 'bg-orange-200' : 'bg-blue-100'}`}>
             {estaActivo ? (
-              <CheckCircle className="w-6 h-6 text-blue-600" />
+              <CheckCircle className="w-6 h-6 text-orange-600" />
             ) : (
-              <XCircle className="w-6 h-6 text-slate-400" />
+              <XCircle className="w-6 h-6 text-blue-400" />
             )}
           </div>
         </div>
 
+        {/* Badge de estado */}
+        <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold mb-4 ${
+          estaActivo ? 'bg-orange-500 text-white' : 'bg-blue-500 text-white'
+        }`}>
+          <span className={`w-2 h-2 rounded-full ${estaActivo ? 'bg-white animate-pulse' : 'bg-blue-200'}`}></span>
+          {estaActivo ? 'ACTIVO' : 'INACTIVO'}
+        </div>
+
         <div className="grid grid-cols-2 gap-4 text-sm">
-          <div>
-            <span className="text-gray-600">Estado:</span>
-            <span className={`ml-2 font-bold ${estaActivo ? 'text-blue-700' : 'text-slate-500'}`}>
-              {estaActivo ? 'Activo' : 'No cargado'}
+          <div className={`p-2 rounded-lg ${estaActivo ? 'bg-orange-100' : 'bg-blue-50'}`}>
+            <span className="text-gray-500 text-xs block">Estado</span>
+            <span className={`font-bold ${estaActivo ? 'text-orange-700' : 'text-blue-600'}`}>
+              {estaActivo ? '✓ Activo' : '✗ No cargado'}
             </span>
           </div>
-          <div>
-            <span className="text-gray-600">Archivo existe:</span>
-            <span className={`ml-2 font-bold ${info.existe ? 'text-blue-700' : 'text-red-600'}`}>
-              {info.existe ? 'Sí' : 'No'}
+          <div className={`p-2 rounded-lg ${info.existe ? (estaActivo ? 'bg-orange-100' : 'bg-blue-50') : 'bg-red-50'}`}>
+            <span className="text-gray-500 text-xs block">Archivo</span>
+            <span className={`font-bold ${info.existe ? (estaActivo ? 'text-orange-700' : 'text-blue-600') : 'text-red-600'}`}>
+              {info.existe ? '✓ Existe' : '✗ No existe'}
             </span>
           </div>
-          {info.r2_score > 0 && (
-            <div>
-              <span className="text-gray-600">R² Score:</span>
-              <span className="ml-2 font-bold text-blue-700">{(info.r2_score * 100).toFixed(1)}%</span>
-            </div>
+          {tipo === 'clasificador' && (
+            <>
+              <div className={`p-2 rounded-lg ${estaActivo ? 'bg-orange-100' : 'bg-blue-50'}`}>
+                <span className="text-gray-500 text-xs block">Features</span>
+                <span className="font-bold text-gray-800">{info.n_features || 0}</span>
+              </div>
+              <div className={`p-2 rounded-lg ${estaActivo ? 'bg-orange-100' : 'bg-blue-50'}`}>
+                <span className="text-gray-500 text-xs block">Clases</span>
+                <span className="font-bold text-gray-800">{info.n_classes || 0}</span>
+              </div>
+            </>
           )}
           {info.features && info.features.length > 0 && (
             <div className="col-span-2">
-              <span className="text-gray-600">Features:</span>
-              <div className="flex flex-wrap gap-1 mt-1">
+              <span className="text-gray-500 text-xs block mb-1">Features</span>
+              <div className="flex flex-wrap gap-1">
                 {info.features.map((feat, idx) => (
-                  <span key={idx} className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
+                  <span key={idx} className={`px-2 py-1 rounded text-xs font-medium ${
+                    estaActivo ? 'bg-orange-200 text-orange-800' : 'bg-blue-100 text-blue-700'
+                  }`}>
                     {feat}
                   </span>
                 ))}
@@ -195,7 +218,8 @@ const EntrenamientoModelos = () => {
   return (
     <div className="flex-1 p-8 overflow-auto bg-gradient-to-br from-slate-50 via-blue-50/50 to-indigo-50/50">
       {/* Header */}
-      <div className="mb-8 bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-700 p-8 rounded-2xl text-white shadow-2xl">
+      <div className="mb-8 bg-gradient-to-br from-blue-700 via-blue-800 to-indigo-900 p-8 rounded-2xl text-white"
+           style={{ boxShadow: '0 8px 32px rgba(30,64,175,0.45)' }}>
         <div className="flex items-center gap-6">
           <div className="w-20 h-20 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm">
             <Brain className="w-12 h-12 text-white" />
@@ -330,11 +354,12 @@ const EntrenamientoModelos = () => {
           <button
             type="submit"
             disabled={entrenando || !formData.archivo_csv}
-            className={`w-full py-4 rounded-xl font-bold text-white text-lg flex items-center justify-center gap-3 transition-all shadow-lg hover:shadow-xl transform hover:scale-[1.02] ${
+            className={`w-full py-4 rounded-xl font-bold text-white text-lg flex items-center justify-center gap-3 transition-all transform hover:scale-[1.02] ${
               entrenando || !formData.archivo_csv
-                ? 'bg-gradient-to-r from-blue-300 to-indigo-300 cursor-not-allowed'
-                : 'bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-700 hover:from-blue-700 hover:via-blue-800 hover:to-indigo-800'
+                ? 'bg-gradient-to-r from-gray-400 to-gray-500 cursor-not-allowed'
+                : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700'
             }`}
+            style={!(entrenando || !formData.archivo_csv) ? { boxShadow: '0 4px 14px rgba(249,115,22,0.45)' } : {}}
           >
             {entrenando ? (
               <>
@@ -489,10 +514,11 @@ const EntrenamientoModelos = () => {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white p-4 rounded-xl border border-slate-200">
-            <h4 className="font-bold text-blue-800 mb-3 flex items-center gap-2">
-              <span className="w-2 h-2 bg-blue-600 rounded-full"></span>
-              Features del Modelo (11 variables):
+          <div className="bg-white p-4 rounded-xl border-l-4 border-l-orange-500 border border-orange-100"
+               style={{ boxShadow: '0 4px 12px rgba(249,115,22,0.12)' }}>
+            <h4 className="font-bold text-orange-700 mb-3 flex items-center gap-2">
+              <span className="w-3 h-3 bg-orange-500 rounded-full"></span>
+              Para Modelo Clasificador:
             </h4>
             <ul className="space-y-2 text-sm text-gray-600">
               <li>• <code className="bg-slate-100 text-slate-700 px-2 py-1 rounded font-mono">casos_lag_1w..4w</code> - Casos confirmados semanas anteriores (1-4)</li>
@@ -505,10 +531,11 @@ const EntrenamientoModelos = () => {
             </ul>
           </div>
 
-          <div className="bg-white p-4 rounded-xl border border-slate-200">
-            <h4 className="font-bold text-indigo-800 mb-3 flex items-center gap-2">
-              <span className="w-2 h-2 bg-indigo-600 rounded-full"></span>
-              Modelos Entrenados:
+          <div className="bg-white p-4 rounded-xl border-l-4 border-l-blue-500 border border-blue-100"
+               style={{ boxShadow: '0 4px 12px rgba(59,130,246,0.12)' }}>
+            <h4 className="font-bold text-blue-700 mb-3 flex items-center gap-2">
+              <span className="w-3 h-3 bg-blue-500 rounded-full"></span>
+              Para Modelo Regresor:
             </h4>
             <ul className="space-y-2 text-sm text-gray-600">
               <li>• <strong className="text-blue-700">Regresión Lineal:</strong> Captura tendencias generales. Ideal para proyecciones a mediano plazo.</li>
