@@ -819,11 +819,11 @@ const Configuracion = () => {
                 <Activity className="w-5 h-5 text-purple-600" /> Modelos de Machine Learning
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Clasificador */}
-                <div className={`border-2 rounded-xl p-5 ${sistemaInfo.modelos.clasificador.cargado ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
+                {/* Regresión Lineal */}
+                <div className={`border-2 rounded-xl p-5 ${sistemaInfo.modelos.lineal?.cargado ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
                   <div className="flex items-center justify-between mb-3">
-                    <h4 className="font-semibold text-gray-800">{sistemaInfo.modelos.clasificador.nombre}</h4>
-                    {sistemaInfo.modelos.clasificador.cargado ? (
+                    <h4 className="font-semibold text-gray-800">{sistemaInfo.modelos.lineal?.nombre || 'Regresión Lineal'}</h4>
+                    {sistemaInfo.modelos.lineal?.cargado ? (
                       <span className="px-2 py-1 bg-green-200 text-green-800 rounded-full text-xs font-medium flex items-center gap-1">
                         <CheckCircle className="w-3 h-3" /> Activo
                       </span>
@@ -834,17 +834,17 @@ const Configuracion = () => {
                     )}
                   </div>
                   <div className="text-sm text-gray-600 space-y-1">
-                    <p><strong>Archivo:</strong> {sistemaInfo.modelos.clasificador.archivo}</p>
-                    <p><strong>Features:</strong> {sistemaInfo.modelos.clasificador.features || 'N/A'}</p>
-                    <p><strong>Uso:</strong> Predice riesgo de brote (Alto/Bajo)</p>
+                    <p><strong>Archivo:</strong> {sistemaInfo.modelos.lineal?.archivo || 'model_lineal.pkl'}</p>
+                    <p><strong>R² Score:</strong> {sistemaInfo.modelos.lineal?.r2_score ? (sistemaInfo.modelos.lineal.r2_score * 100).toFixed(1) + '%' : 'N/A'}</p>
+                    <p><strong>Uso:</strong> Predicción de tendencias generales de casos</p>
                   </div>
                 </div>
 
-                {/* Regresor */}
-                <div className={`border-2 rounded-xl p-5 ${sistemaInfo.modelos.regresor.cargado ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
+                {/* Regresión Polinomial */}
+                <div className={`border-2 rounded-xl p-5 ${sistemaInfo.modelos.polinomial?.cargado ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
                   <div className="flex items-center justify-between mb-3">
-                    <h4 className="font-semibold text-gray-800">{sistemaInfo.modelos.regresor.nombre}</h4>
-                    {sistemaInfo.modelos.regresor.cargado ? (
+                    <h4 className="font-semibold text-gray-800">{sistemaInfo.modelos.polinomial?.nombre || 'Regresión Polinomial'}</h4>
+                    {sistemaInfo.modelos.polinomial?.cargado ? (
                       <span className="px-2 py-1 bg-green-200 text-green-800 rounded-full text-xs font-medium flex items-center gap-1">
                         <CheckCircle className="w-3 h-3" /> Activo
                       </span>
@@ -855,9 +855,9 @@ const Configuracion = () => {
                     )}
                   </div>
                   <div className="text-sm text-gray-600 space-y-1">
-                    <p><strong>Archivo:</strong> {sistemaInfo.modelos.regresor.archivo}</p>
-                    <p><strong>R² Score:</strong> {sistemaInfo.modelos.regresor.r2_score || 'N/A'}</p>
-                    <p><strong>Uso:</strong> Predice número de casos esperados</p>
+                    <p><strong>Archivo:</strong> {sistemaInfo.modelos.polinomial?.archivo || 'model_polinomial.pkl'}</p>
+                    <p><strong>R² Score:</strong> {sistemaInfo.modelos.polinomial?.r2_score ? (sistemaInfo.modelos.polinomial.r2_score * 100).toFixed(1) + '%' : 'N/A'}</p>
+                    <p><strong>Uso:</strong> Predicción de patrones no lineales y estacionales</p>
                   </div>
                 </div>
               </div>

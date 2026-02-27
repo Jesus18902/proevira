@@ -56,13 +56,17 @@ def get_resumen():
         total_casos = int(cursor.fetchone()['total'])
         cursor.execute('SELECT COUNT(DISTINCT id_region) as total FROM dato_epidemiologico')
         regiones = cursor.fetchone()['total']
-        cursor.execute("SELECT COUNT(*) as total FROM alertas_epidemiologicas WHERE estado_alerta IN ('activa', 'enviada')")
-        alertas = cursor.fetchone()['total']
+        try:
+            cursor.execute("SELECT COUNT(*) as total FROM alertas WHERE estado_alerta = 'activa'")
+            alertas = cursor.fetchone()['total']
+        except Exception:
+            alertas = 0
+        from ml import hay_modelos as _hm, mejor_modelo as _mm
         return jsonify({
             'total_casos_historicos': total_casos,
             'regiones_monitoreadas': regiones,
             'alertas_activas': alertas,
-            'modelo_activo': 'Random Forest' if models.clasificador else 'No disponible'
+            'modelo_activo': f'Regresion {_mm().capitalize()}' if _hm() else 'No disponible'
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -74,6 +78,8 @@ def get_resumen():
 @sistema_bp.route('/health', methods=['GET'])
 def health():
     """Estado del servidor para monitoreo en tiempo real"""
+    from ml import hay_modelos, mejor_modelo as get_mejor
+
     conn = get_db_connection()
 
     health_status = {
@@ -86,13 +92,14 @@ def health():
         },
         'models': {
             'loaded': False,
-            'classifier': None,
-            'regressor': None,
+            'lineal': None,
+            'polinomial': None,
+            'mejor_modelo': None,
             'metrics': {
-                'accuracy': 0.942,
-                'precision': 0.938,
-                'recall': 0.941,
-                'f1_score': 0.939
+                'r2_lineal': 0,
+                'r2_polinomial': 0,
+                'mae_lineal': 0,
+                'mae_polinomial': 0
             }
         },
         'predictions': {
@@ -101,6 +108,10 @@ def health():
             'success_rate': 0,
             'last_minute': 0,
             'distribution': []
+        },
+        'alertas': {
+            'activas': 0,
+            'hoy': 0
         }
     }
 
@@ -112,30 +123,65 @@ def health():
             health_status['database']['status'] = 'connected'
             health_status['database']['active_connections'] = 1
 
-            cursor.execute("""
-                SELECT COUNT(*) as total_hoy FROM prediccion
-                WHERE DATE(fecha_prediccion) = CURDATE()
-            """)
-            result = cursor.fetchone()
-            health_status['predictions']['today'] = result['total_hoy'] if result else 0
+            # Contar predicciones guardadas (tabla predicciones_guardadas)
+            try:
+                cursor.execute("""
+                    SELECT COUNT(*) as total_hoy FROM predicciones_guardadas
+                    WHERE DATE(fecha_generacion) = CURDATE()
+                """)
+                result = cursor.fetchone()
+                health_status['predictions']['today'] = result['total_hoy'] if result else 0
 
-            cursor.execute("SELECT COUNT(*) as total FROM prediccion")
-            result = cursor.fetchone()
-            health_status['predictions']['total'] = result['total'] if result else 0
+                cursor.execute("SELECT COUNT(*) as total FROM predicciones_guardadas")
+                result = cursor.fetchone()
+                health_status['predictions']['total'] = result['total'] if result else 0
+            except Exception:
+                health_status['predictions']['today'] = 0
+                health_status['predictions']['total'] = 0
 
-            cursor.execute("""
-                SELECT nivel_riesgo, COUNT(*) as cantidad FROM prediccion
-                WHERE DATE(fecha_prediccion) >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
-                GROUP BY nivel_riesgo
-            """)
-            distribucion = cursor.fetchall()
-            health_status['predictions']['distribution'] = [
-                {'nivel': d['nivel_riesgo'], 'cantidad': d['cantidad']}
-                for d in distribucion
-            ] if distribucion else []
+            # Distribucion de riesgo desde predicciones guardadas (JSON)
+            try:
+                cursor.execute("""
+                    SELECT datos_prediccion FROM predicciones_guardadas
+                    WHERE fecha_generacion >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+                    ORDER BY fecha_generacion DESC LIMIT 20
+                """)
+                import json as _json
+                conteo = {'Bajo': 0, 'Moderado': 0, 'Alto': 0, 'Critico': 0}
+                for row in cursor.fetchall():
+                    try:
+                        preds = _json.loads(row['datos_prediccion']) if isinstance(row['datos_prediccion'], str) else row['datos_prediccion']
+                        for p in (preds if isinstance(preds, list) else []):
+                            nivel = p.get('nivel_riesgo', '')
+                            if nivel in conteo:
+                                conteo[nivel] += 1
+                            elif nivel == 'Crítico':
+                                conteo['Critico'] += 1
+                    except Exception:
+                        pass
+                health_status['predictions']['distribution'] = [
+                    {'nivel': k, 'cantidad': v} for k, v in conteo.items() if v > 0
+                ]
+            except Exception:
+                health_status['predictions']['distribution'] = []
 
             health_status['predictions']['success_rate'] = 95.0
             health_status['predictions']['last_minute'] = 0
+
+            # Contar alertas activas
+            try:
+                cursor.execute("SELECT COUNT(*) as total FROM alertas WHERE estado_alerta = 'activa'")
+                result = cursor.fetchone()
+                health_status['alertas']['activas'] = result['total'] if result else 0
+
+                cursor.execute("""
+                    SELECT COUNT(*) as hoy FROM alertas
+                    WHERE DATE(fecha_generacion) = CURDATE()
+                """)
+                result = cursor.fetchone()
+                health_status['alertas']['hoy'] = result['hoy'] if result else 0
+            except Exception:
+                pass
 
         except Exception as e:
             health_status['database']['status'] = 'error'
@@ -146,12 +192,17 @@ def health():
                 cursor.close()
             conn.close()
 
-    if models.clasificador is not None and models.label_encoder is not None:
+    if hay_modelos():
         health_status['models']['loaded'] = True
-        health_status['models']['classifier'] = 'RandomForest'
-
-    if models.regresor is not None:
-        health_status['models']['regressor'] = 'RandomForest'
+        health_status['models']['lineal'] = 'Regresion Lineal' if models.modelo_lineal else None
+        health_status['models']['polinomial'] = f'Regresion Polinomial (grado {models.poly_degree})' if models.modelo_polinomial else None
+        health_status['models']['mejor_modelo'] = get_mejor()
+        health_status['models']['metrics'] = {
+            'r2_lineal': round(models.metricas_lineal.get('r2', 0), 4),
+            'r2_polinomial': round(models.metricas_polinomial.get('r2', 0), 4),
+            'mae_lineal': round(models.metricas_lineal.get('mae', 0), 2),
+            'mae_polinomial': round(models.metricas_polinomial.get('mae', 0), 2)
+        }
 
     return jsonify(health_status), 200
 
@@ -159,26 +210,47 @@ def health():
 @sistema_bp.route('/sistema/info', methods=['GET'])
 def info_sistema():
     """Información del sistema y modelos"""
+    from ml import hay_modelos, mejor_modelo as get_mejor
     return jsonify({
         'success': True,
         'sistema': {
-            'nombre': 'ProeVira - Sistema de Predicción de Enfermedades',
-            'version': '2.0.0',
+            'nombre': 'ProeVira - Sistema de Prediccion de Enfermedades',
+            'version': '3.0.0',
             'base_datos': 'MySQL (proyecto_integrador)'
         },
         'modelos': {
+            'lineal': {
+                'nombre': 'Regresion Lineal',
+                'archivo': 'model_lineal.pkl',
+                'cargado': models.modelo_lineal is not None,
+                'metricas': models.metricas_lineal,
+                'features': models.feature_cols or [],
+                'r2_score': models.metricas_lineal.get('r2', 0)
+            },
+            'polinomial': {
+                'nombre': f'Regresion Polinomial (grado {models.poly_degree})',
+                'archivo': 'model_polinomial.pkl',
+                'cargado': models.modelo_polinomial is not None,
+                'metricas': models.metricas_polinomial,
+                'features': models.feature_cols or [],
+                'r2_score': models.metricas_polinomial.get('r2', 0)
+            },
+            # Backward-compatible aliases for frontend (Configuracion.js)
             'clasificador': {
-                'nombre': 'Random Forest Classifier',
-                'archivo': 'model.pkl',
-                'cargado': models.clasificador is not None,
-                'features': models.clasificador.n_features_in_ if models.clasificador else None
+                'nombre': 'Regresion Lineal',
+                'archivo': 'model_lineal.pkl',
+                'cargado': models.modelo_lineal is not None,
+                'features': models.feature_cols or [],
+                'r2_score': models.metricas_lineal.get('r2', 0)
             },
             'regresor': {
-                'nombre': 'Random Forest Regressor',
-                'archivo': 'model_regressor.pkl',
-                'cargado': models.regresor is not None,
-                'r2_score': '96.3%' if models.regresor else None
-            }
+                'nombre': f'Regresion Polinomial (grado {models.poly_degree})',
+                'archivo': 'model_polinomial.pkl',
+                'cargado': models.modelo_polinomial is not None,
+                'features': models.feature_cols or [],
+                'r2_score': models.metricas_polinomial.get('r2', 0)
+            },
+            'mejor_modelo': get_mejor() if hay_modelos() else None
         },
         'conexion_db': connection_pool is not None
     })

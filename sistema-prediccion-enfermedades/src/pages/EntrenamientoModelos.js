@@ -129,7 +129,7 @@ const EntrenamientoModelos = () => {
             </div>
             <div>
               <h3 className="text-lg font-bold text-gray-800">
-                Modelo {tipo === 'clasificador' ? 'Clasificador' : 'Regresor'}
+                Modelo {tipo === 'lineal' ? 'Regresión Lineal' : tipo === 'polinomial' ? 'Regresión Polinomial' : tipo === 'clasificador' ? 'Regresión Lineal' : 'Regresión Polinomial'}
               </h3>
               <p className="text-sm text-gray-500">{info.archivo}</p>
             </div>
@@ -156,19 +156,13 @@ const EntrenamientoModelos = () => {
               {info.existe ? 'Sí' : 'No'}
             </span>
           </div>
-          {tipo === 'clasificador' && (
-            <>
-              <div>
-                <span className="text-gray-600">Features:</span>
-                <span className="ml-2 font-bold text-gray-800">{info.n_features || 0}</span>
-              </div>
-              <div>
-                <span className="text-gray-600">Clases:</span>
-                <span className="ml-2 font-bold text-gray-800">{info.n_classes || 0}</span>
-              </div>
-            </>
+          {info.r2_score > 0 && (
+            <div>
+              <span className="text-gray-600">R² Score:</span>
+              <span className="ml-2 font-bold text-blue-700">{(info.r2_score * 100).toFixed(1)}%</span>
+            </div>
           )}
-          {tipo === 'regresor' && info.features && info.features.length > 0 && (
+          {info.features && info.features.length > 0 && (
             <div className="col-span-2">
               <span className="text-gray-600">Features:</span>
               <div className="flex flex-wrap gap-1 mt-1">
@@ -217,10 +211,10 @@ const EntrenamientoModelos = () => {
         </div>
         <div className="mt-6 flex flex-wrap gap-3">
           <span className="px-4 py-2 bg-white/20 rounded-xl text-sm font-bold flex items-center gap-2">
-            <Target className="w-4 h-4" /> <strong>Random Forest</strong>
+            <Target className="w-4 h-4" /> <strong>Regresión Lineal + Polinomial</strong>
           </span>
           <span className="px-4 py-2 bg-white/20 rounded-xl text-sm font-bold flex items-center gap-2">
-            <BarChart3 className="w-4 h-4" /> <strong>Clasificación y Regresión</strong>
+            <BarChart3 className="w-4 h-4" /> <strong>Comparativa de Modelos</strong>
           </span>
           <span className="px-4 py-2 bg-white/20 rounded-xl text-sm font-bold flex items-center gap-2">
             <Database className="w-4 h-4" /> <strong>Datos CSV</strong>
@@ -241,8 +235,8 @@ const EntrenamientoModelos = () => {
 
         {modelosInfo && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <EstadoModelo tipo="clasificador" info={modelosInfo.clasificador} />
-            <EstadoModelo tipo="regresor" info={modelosInfo.regresor} />
+            <EstadoModelo tipo="lineal" info={modelosInfo.lineal || modelosInfo.clasificador} />
+            <EstadoModelo tipo="polinomial" info={modelosInfo.polinomial || modelosInfo.regresor} />
           </div>
         )}
       </div>
@@ -271,23 +265,14 @@ const EntrenamientoModelos = () => {
               onChange={handleChange}
               className="w-full px-4 py-3 border-2 border-blue-200 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none text-gray-800 font-medium bg-gradient-to-r from-white to-blue-50"
             >
-              <option value="clasificador">🎯 Clasificador (Nivel de Riesgo)</option>
-              <option value="regresor">📈 Regresor (Número de Casos)</option>
+              <option value="regresor">📈 Regresión Lineal + Polinomial (Casos y Riesgo)</option>
             </select>
 
             <div className="mt-3 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl">
               <p className="text-sm text-blue-800">
-                {formData.tipo_modelo === 'clasificador' ? (
-                  <>
-                    <strong>Clasificador:</strong> Predice el nivel de riesgo (Bajo, Medio, Alto, Crítico)
-                    basado en las tasas de incidencia y características temporales.
-                  </>
-                ) : (
-                  <>
-                    <strong>Regresor:</strong> Predice el número exacto de casos esperados basado en
-                    datos históricos y patrones estacionales.
-                  </>
-                )}
+                <strong>Regresión Lineal + Polinomial:</strong> Entrena simultáneamente ambos modelos. 
+                El modelo <strong>Lineal</strong> captura tendencias generales y el <strong>Polinomial (grado 2)</strong> captura 
+                patrones no lineales. El sistema selecciona automáticamente el mejor para cada predicción.
               </p>
             </div>
           </div>
@@ -507,31 +492,34 @@ const EntrenamientoModelos = () => {
           <div className="bg-white p-4 rounded-xl border border-slate-200">
             <h4 className="font-bold text-blue-800 mb-3 flex items-center gap-2">
               <span className="w-2 h-2 bg-blue-600 rounded-full"></span>
-              Para Modelo Clasificador:
+              Features del Modelo (11 variables):
             </h4>
             <ul className="space-y-2 text-sm text-gray-600">
-              <li>• <code className="bg-slate-100 text-slate-700 px-2 py-1 rounded font-mono">TI_LAG_1W</code> - Tasa de incidencia semana anterior</li>
-              <li>• <code className="bg-slate-100 text-slate-700 px-2 py-1 rounded font-mono">TI_LAG_4W</code> - Tasa de incidencia 4 semanas atrás</li>
-              <li>• <code className="bg-slate-100 text-slate-700 px-2 py-1 rounded font-mono">SEMANA_DEL_ANIO</code> - Número de semana (1-52)</li>
-              <li>• <code className="bg-slate-100 text-slate-700 px-2 py-1 rounded font-mono">MES</code> - Mes del año (1-12)</li>
-              <li>• <code className="bg-slate-100 text-slate-700 px-2 py-1 rounded font-mono">ENTIDAD_FED</code> - Nombre del estado</li>
-              <li>• <code className="bg-green-100 text-green-700 px-2 py-1 rounded font-mono">NIVEL_RIESGO</code> - Target (bajo/medio/alto/crítico)</li>
+              <li>• <code className="bg-slate-100 text-slate-700 px-2 py-1 rounded font-mono">casos_lag_1w..4w</code> - Casos confirmados semanas anteriores (1-4)</li>
+              <li>• <code className="bg-slate-100 text-slate-700 px-2 py-1 rounded font-mono">ti_lag_1w, ti_lag_2w</code> - Tasa de incidencia semanas anteriores</li>
+              <li>• <code className="bg-slate-100 text-slate-700 px-2 py-1 rounded font-mono">casos_promedio_4w</code> - Promedio móvil de 4 semanas</li>
+              <li>• <code className="bg-slate-100 text-slate-700 px-2 py-1 rounded font-mono">tendencia_4w</code> - Tendencia de las últimas 4 semanas</li>
+              <li>• <code className="bg-slate-100 text-slate-700 px-2 py-1 rounded font-mono">semana_anio</code> - Semana epidemiológica (1-52)</li>
+              <li>• <code className="bg-slate-100 text-slate-700 px-2 py-1 rounded font-mono">mes</code> - Mes del año (1-12)</li>
+              <li>• <code className="bg-slate-100 text-slate-700 px-2 py-1 rounded font-mono">estado_coded</code> - Código numérico del estado</li>
             </ul>
           </div>
 
           <div className="bg-white p-4 rounded-xl border border-slate-200">
             <h4 className="font-bold text-indigo-800 mb-3 flex items-center gap-2">
               <span className="w-2 h-2 bg-indigo-600 rounded-full"></span>
-              Para Modelo Regresor:
+              Modelos Entrenados:
             </h4>
             <ul className="space-y-2 text-sm text-gray-600">
-              <li>• <code className="bg-slate-100 text-slate-700 px-2 py-1 rounded font-mono">TI_LAG_1W</code> - Tasa de incidencia semana anterior</li>
-              <li>• <code className="bg-slate-100 text-slate-700 px-2 py-1 rounded font-mono">TI_LAG_4W</code> - Tasa de incidencia 4 semanas atrás</li>
-              <li>• <code className="bg-slate-100 text-slate-700 px-2 py-1 rounded font-mono">SEMANA_DEL_ANIO</code> - Número de semana (1-52)</li>
-              <li>• <code className="bg-slate-100 text-slate-700 px-2 py-1 rounded font-mono">MES</code> - Mes del año (1-12)</li>
-              <li>• <code className="bg-slate-100 text-slate-700 px-2 py-1 rounded font-mono">ENTIDAD_FED</code> - Nombre del estado</li>
-              <li>• <code className="bg-green-100 text-green-700 px-2 py-1 rounded font-mono">casos_confirmados</code> - Target (número de casos)</li>
+              <li>• <strong className="text-blue-700">Regresión Lineal:</strong> Captura tendencias generales. Ideal para proyecciones a mediano plazo.</li>
+              <li>• <strong className="text-indigo-700">Regresión Polinomial (grado 2):</strong> Captura patrones no lineales y estacionales.</li>
+              <li>• <strong className="text-green-700">Selección automática:</strong> El sistema elige el mejor modelo según el R² Score.</li>
             </ul>
+            <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+              <p className="text-sm text-green-800">
+                <strong>Target:</strong> <code className="bg-green-100 text-green-700 px-2 py-1 rounded font-mono">casos_confirmados</code> - Número de casos de dengue a predecir.
+              </p>
+            </div>
           </div>
         </div>
       </div>

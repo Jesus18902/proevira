@@ -59,7 +59,7 @@ if __name__ == '__main__':
     print("\n" + "=" * 60)
     print("API Flask - Prediccion de Riesgo de Dengue (Blueprints)")
     print("=" * 60)
-    print("Modelo: Random Forest (model.pkl + label_encoder.pkl)")
+    print("Modelos: Regresion Lineal + Polinomial (comparativa)")
     print("Base de datos: MySQL (proyecto_integrador)")
     print("Datos: 2020-2025 (6 anios)")
     print("\nEndpoints:")

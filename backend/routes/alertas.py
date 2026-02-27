@@ -1,415 +1,389 @@
 # backend/routes/alertas.py
-# Endpoints del sistema de alertas epidemiológicas
+# Endpoints de alertas epidemiologicas
 
-import pandas as pd
 from flask import Blueprint, request, jsonify
 from datetime import datetime
 
-from config import ESTADO_POR_ID
+from config import ESTADO_POR_ID, POBLACION_2025
 from database import get_db_connection
-from ml import models
+from ml import models, hay_modelos, predecir_casos, derivar_riesgo, construir_features
 
 alertas_bp = Blueprint('alertas', __name__, url_prefix='/api/alertas')
 
 
 def crear_tabla_alertas():
-    """Crea la tabla de alertas si no existe"""
-    conn = get_db_connection()
-    if not conn:
-        return False
+    """Crea la tabla de alertas si no existe."""
+    conn = None
     try:
+        conn = get_db_connection()
+        if conn is None:
+            return
         cursor = conn.cursor()
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS alertas_epidemiologicas (
+            CREATE TABLE IF NOT EXISTS alertas (
                 id INT AUTO_INCREMENT PRIMARY KEY,
-                id_region INT NOT NULL,
-                estado VARCHAR(100) NOT NULL,
-                nivel VARCHAR(20) NOT NULL,
-                probabilidad FLOAT,
-                casos_esperados INT,
+                tipo VARCHAR(50) NOT NULL DEFAULT 'manual',
+                nivel VARCHAR(20) NOT NULL DEFAULT 'Bajo',
+                estado VARCHAR(100),
                 mensaje TEXT,
-                recomendaciones TEXT,
-                tipo_notificacion VARCHAR(50),
-                prioridad VARCHAR(20),
-                estado_alerta VARCHAR(20) DEFAULT 'activa',
+                probabilidad FLOAT DEFAULT 0,
+                casos_predichos INT DEFAULT 0,
                 fecha_generacion DATETIME DEFAULT CURRENT_TIMESTAMP,
-                fecha_envio DATETIME,
+                estado_alerta VARCHAR(20) DEFAULT 'activa',
+                resuelto_por VARCHAR(100),
                 fecha_resolucion DATETIME,
-                resolucion TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                INDEX idx_region (id_region),
+                notas TEXT,
                 INDEX idx_estado_alerta (estado_alerta),
-                INDEX idx_nivel (nivel)
+                INDEX idx_nivel (nivel),
+                INDEX idx_fecha (fecha_generacion)
             )
         """)
         conn.commit()
-        return True
+        print("[OK] Tabla alertas verificada/creada")
     except Exception as e:
-        print(f"Error creando tabla alertas: {e}")
-        return False
+        print(f"[WARN] Error creando tabla alertas: {e}")
     finally:
-        cursor.close()
-        conn.close()
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 @alertas_bp.route('/generar-automaticas', methods=['POST'])
 def generar_alertas_automaticas():
-    """Genera alertas automáticas basadas en predicciones de riesgo"""
-    conn = get_db_connection()
-    if not conn:
-        return jsonify({'error': 'Error de conexión'}), 500
-
+    """Genera alertas automaticas para todos los estados con modelo ML."""
+    conn = None
     try:
-        data = request.get_json() or {}
-        umbral_riesgo = data.get('umbral_riesgo', 50)
+        if not hay_modelos():
+            return jsonify({
+                'success': False,
+                'error': 'No hay modelos entrenados'
+            }), 400
+
+        conn = get_db_connection()
+        if conn is None:
+            return jsonify({'success': False, 'error': 'Error de conexion a BD'}), 500
 
         cursor = conn.cursor(dictionary=True)
 
-        cursor.execute("SELECT id_region, nombre, poblacion FROM region ORDER BY id_region")
-        regiones = cursor.fetchall()
+        # Obtener regiones con datos
+        cursor.execute("""
+            SELECT DISTINCT id_region FROM dato_epidemiologico
+        """)
+        regiones = [r['id_region'] for r in cursor.fetchall()]
 
-        alertas = []
-        fecha_actual = datetime.now().strftime('%Y-%m-%d')
+        alertas_generadas = []
+        errores = []
 
-        for region in regiones:
-            id_region = region['id_region']
-            nombre = region['nombre']
-            poblacion = region['poblacion'] or 100000
+        for id_region in regiones:
+            try:
+                nombre_estado = ESTADO_POR_ID.get(id_region, f'Region {id_region}')
+                poblacion = POBLACION_2025.get(nombre_estado, 100000)
 
-            cursor.execute('''
-                SELECT casos_confirmados, tasa_incidencia, fecha_fin_semana
-                FROM dato_epidemiologico
-                WHERE id_region = %s ORDER BY fecha_fin_semana DESC LIMIT 4
-            ''', (id_region,))
-            datos = cursor.fetchall()
+                cursor.execute("""
+                    SELECT casos_confirmados, tasa_incidencia, fecha_fin_semana
+                    FROM dato_epidemiologico
+                    WHERE id_region = %s
+                    ORDER BY fecha_fin_semana DESC
+                    LIMIT 4
+                """, (id_region,))
+                datos = cursor.fetchall()
 
-            if len(datos) < 2:
-                continue
+                if len(datos) < 1:
+                    continue
 
-            casos_reciente = datos[0]['casos_confirmados'] if datos else 0
-            casos_anterior = datos[1]['casos_confirmados'] if len(datos) > 1 else casos_reciente
-            ti_actual = float(datos[0]['tasa_incidencia']) if datos else 0
+                X_df, info = construir_features(datos, id_region)
 
-            if casos_reciente > casos_anterior * 1.2:
-                tendencia = 'Creciente'
-            elif casos_reciente < casos_anterior * 0.8:
-                tendencia = 'Decreciente'
-            else:
-                tendencia = 'Estable'
+                if models.feature_cols:
+                    for col in models.feature_cols:
+                        if col not in X_df.columns:
+                            X_df[col] = 0
+                    X_df = X_df[models.feature_cols]
 
-            if models.clasificador is not None:
-                try:
-                    casos_hist = [int(d['casos_confirmados']) for d in datos]
-                    ti_hist = [float(d['tasa_incidencia']) for d in datos]
+                predicciones = predecir_casos(X_df)
+                casos_pred = predicciones.get('casos_mejor_modelo', 0)
+                riesgo = derivar_riesgo(casos_pred, poblacion)
 
-                    casos_lag_1w = casos_hist[0]
-                    casos_lag_4w = casos_hist[3] if len(casos_hist) > 3 else casos_lag_1w
-                    ti_lag_1w = ti_hist[0]
-                    ti_lag_4w = ti_hist[3] if len(ti_hist) > 3 else ti_lag_1w
-
-                    semana = datetime.now().isocalendar()[1]
-                    mes = datetime.now().month
-
+                # Solo crear alerta si riesgo >= Moderado
+                if riesgo['probabilidad'] >= 25:
                     try:
-                        entidad_coded = models.label_encoder.transform([nombre])[0]
+                        cursor.execute("""
+                            INSERT INTO alertas (tipo, nivel, estado, mensaje,
+                                                 probabilidad, casos_predichos,
+                                                 fecha_generacion, estado_alerta)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, 'activa')
+                        """, (
+                            'automatica',
+                            riesgo['nivel'],
+                            nombre_estado,
+                            riesgo['mensaje'],
+                            riesgo['probabilidad'],
+                            casos_pred,
+                            datetime.now()
+                        ))
                     except Exception:
-                        entidad_coded = id_region - 1
+                        pass
 
-                    X_predict = pd.DataFrame({
-                        'TI_LAG_1W': [ti_lag_1w],
-                        'TI_LAG_4W': [ti_lag_4w],
-                        'CASOS_LAG_1W': [casos_lag_1w],
-                        'CASOS_LAG_4W': [casos_lag_4w],
-                        'SEMANA_DEL_ANIO': [semana],
-                        'MES': [mes],
-                        'ENTIDAD_CODED': [entidad_coded]
+                    alertas_generadas.append({
+                        'estado': nombre_estado,
+                        'id_region': id_region,
+                        'nivel_riesgo': riesgo['nivel'],
+                        'probabilidad': riesgo['probabilidad'],
+                        'casos_predichos': casos_pred,
+                        'modelo_usado': predicciones.get('mejor', 'desconocido'),
+                        'mensaje': riesgo['mensaje']
                     })
 
-                    probabilidad = round(models.clasificador.predict_proba(X_predict)[0][1] * 100, 1)
-                except Exception:
-                    probabilidad = min(100, max(0, ti_actual * 2))
-            else:
-                probabilidad = min(100, max(0, ti_actual * 2))
+            except Exception as e:
+                errores.append({'region': id_region, 'error': str(e)})
 
-            if probabilidad < umbral_riesgo:
-                continue
-
-            if probabilidad >= 75:
-                nivel = 'Crítico'
-                mensaje = f'ALERTA CRÍTICA: {nombre} presenta un riesgo muy alto de brote de dengue.'
-                recomendaciones = 'Activar protocolos de emergencia. Intensificar fumigación. Desplegar brigadas de salud. Comunicar a la población.'
-            elif probabilidad >= 50:
-                nivel = 'Alto'
-                mensaje = f'ADVERTENCIA: {nombre} presenta riesgo elevado de brote de dengue.'
-                recomendaciones = 'Aumentar vigilancia epidemiológica. Iniciar campañas de descacharrización. Preparar recursos médicos.'
-            elif probabilidad >= 25:
-                nivel = 'Moderado'
-                mensaje = f'PRECAUCIÓN: {nombre} muestra indicadores de riesgo moderado.'
-                recomendaciones = 'Mantener vigilancia activa. Reforzar educación comunitaria sobre prevención.'
-            else:
-                nivel = 'Bajo'
-                mensaje = f'{nombre}: Riesgo bajo de brote.'
-                recomendaciones = 'Continuar con medidas preventivas habituales.'
-
-            casos_esperados = casos_reciente
-            if models.regresor is not None:
-                try:
-                    X_reg = pd.DataFrame({
-                        'casos_lag_1w': [casos_lag_1w],
-                        'casos_lag_2w': [casos_hist[1] if len(casos_hist) > 1 else casos_lag_1w],
-                        'casos_lag_3w': [casos_hist[2] if len(casos_hist) > 2 else casos_lag_1w],
-                        'casos_lag_4w': [casos_lag_4w],
-                        'ti_lag_1w': [ti_lag_1w],
-                        'ti_lag_2w': [ti_hist[1] if len(ti_hist) > 1 else ti_lag_1w],
-                        'casos_promedio_4w': [sum(casos_hist[:4]) / min(4, len(casos_hist))],
-                        'tendencia_4w': [casos_lag_1w - casos_lag_4w],
-                        'semana_anio': [semana],
-                        'mes': [mes],
-                        'estado_coded': [entidad_coded]
-                    })
-                    casos_esperados = int(max(0, models.regresor.predict(X_reg)[0]))
-                except Exception:
-                    pass
-
-            alertas.append({
-                'id_region': id_region,
-                'estado': nombre,
-                'nivel_riesgo': nivel,
-                'probabilidad': probabilidad,
-                'casos_esperados': casos_esperados,
-                'casos_semana_actual': casos_reciente,
-                'tendencia': tendencia,
-                'mensaje': mensaje,
-                'recomendaciones': recomendaciones,
-                'fecha': fecha_actual,
-                'enviada': False
-            })
-
-        alertas.sort(key=lambda x: x['probabilidad'], reverse=True)
+        if alertas_generadas:
+            conn.commit()
 
         return jsonify({
             'success': True,
-            'alertas': alertas,
-            'total': len(alertas),
-            'umbral_usado': umbral_riesgo,
-            'fecha_analisis': fecha_actual
-        })
+            'alertas_generadas': len(alertas_generadas),
+            'alertas': alertas_generadas,
+            'regiones_evaluadas': len(regiones),
+            'errores': errores
+        }), 200
 
     except Exception as e:
         import traceback
         traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
     finally:
-        cursor.close()
-        conn.close()
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 @alertas_bp.route('/enviar', methods=['POST'])
 def enviar_alerta():
-    """Envía una alerta y la guarda en BD"""
-    conn = get_db_connection()
-    if not conn:
-        return jsonify({'error': 'Error de conexión'}), 500
-
+    """Crear alerta manual."""
+    conn = None
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
+        tipo = data.get('tipo', 'manual')
+        nivel = data.get('nivel', 'Bajo')
+        estado = data.get('estado', '')
+        mensaje = data.get('mensaje', '')
+
+        conn = get_db_connection()
+        if conn is None:
+            return jsonify({'success': False, 'error': 'Error de conexion a BD'}), 500
+
         cursor = conn.cursor()
-
         cursor.execute("""
-            INSERT INTO alertas_epidemiologicas
-            (id_region, estado, nivel, probabilidad, casos_esperados,
-             mensaje, recomendaciones, tipo_notificacion, prioridad,
-             estado_alerta, fecha_envio)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'enviada', NOW())
+            INSERT INTO alertas (tipo, nivel, estado, mensaje,
+                                 probabilidad, casos_predichos,
+                                 fecha_generacion, estado_alerta)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 'activa')
         """, (
-            data.get('id_region'),
-            data.get('estado'),
-            data.get('nivel_riesgo'),
-            data.get('probabilidad'),
-            data.get('casos_esperados'),
-            data.get('mensaje'),
-            data.get('recomendaciones'),
-            data.get('tipo_notificacion', 'sistema'),
-            data.get('prioridad', 'alta')
+            tipo, nivel, estado, mensaje,
+            data.get('probabilidad', 0),
+            data.get('casos_predichos', 0),
+            datetime.now()
         ))
-
         conn.commit()
-        alerta_id = cursor.lastrowid
 
         return jsonify({
             'success': True,
-            'mensaje': f'Alerta enviada exitosamente a {data.get("estado")}',
-            'alerta_id': alerta_id,
-            'tipo_envio': data.get('tipo_notificacion', 'sistema')
-        })
+            'mensaje': 'Alerta creada correctamente',
+            'id_alerta': cursor.lastrowid
+        }), 201
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
     finally:
-        cursor.close()
-        conn.close()
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 @alertas_bp.route('/enviar-masivo', methods=['POST'])
-def enviar_alertas_masivo():
-    """Envía múltiples alertas"""
-    conn = get_db_connection()
-    if not conn:
-        return jsonify({'error': 'Error de conexión'}), 500
-
+def enviar_alerta_masiva():
+    """Enviar alertas masivas a multiples estados."""
+    conn = None
     try:
-        data = request.get_json()
-        alertas = data.get('alertas', [])
+        data = request.get_json() or {}
+        estados = data.get('estados', [])
+        nivel = data.get('nivel', 'Moderado')
+        mensaje = data.get('mensaje', 'Alerta masiva generada')
+        tipo = data.get('tipo', 'masiva')
+
+        if not estados:
+            return jsonify({'success': False, 'error': 'Se requiere lista de estados'}), 400
+
+        conn = get_db_connection()
+        if conn is None:
+            return jsonify({'success': False, 'error': 'Error de conexion a BD'}), 500
 
         cursor = conn.cursor()
-        enviadas = 0
+        creadas = 0
 
-        for alerta in alertas:
-            cursor.execute("""
-                INSERT INTO alertas_epidemiologicas
-                (id_region, estado, nivel, probabilidad, casos_esperados,
-                 mensaje, recomendaciones, tipo_notificacion, prioridad,
-                 estado_alerta, fecha_envio)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'enviada', NOW())
-            """, (
-                alerta.get('id_region'),
-                alerta.get('estado'),
-                alerta.get('nivel_riesgo'),
-                alerta.get('probabilidad'),
-                alerta.get('casos_esperados'),
-                alerta.get('mensaje'),
-                alerta.get('recomendaciones'),
-                data.get('tipo_notificacion', 'sistema'),
-                data.get('prioridad', 'alta')
-            ))
-            enviadas += 1
+        for estado in estados:
+            try:
+                cursor.execute("""
+                    INSERT INTO alertas (tipo, nivel, estado, mensaje,
+                                         fecha_generacion, estado_alerta)
+                    VALUES (%s, %s, %s, %s, %s, 'activa')
+                """, (tipo, nivel, estado, mensaje, datetime.now()))
+                creadas += 1
+            except Exception:
+                pass
 
         conn.commit()
 
         return jsonify({
             'success': True,
-            'enviadas': enviadas,
-            'mensaje': f'{enviadas} alertas enviadas exitosamente'
-        })
+            'mensaje': f'{creadas} alertas enviadas',
+            'alertas_enviadas': creadas
+        }), 201
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
     finally:
-        cursor.close()
-        conn.close()
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 @alertas_bp.route('/activas', methods=['GET'])
 def get_alertas_activas():
-    """Obtiene las alertas activas"""
-    conn = get_db_connection()
-    if not conn:
-        return jsonify({'error': 'Error de conexión'}), 500
-
+    """Obtener alertas activas."""
+    conn = None
     try:
+        conn = get_db_connection()
+        if conn is None:
+            return jsonify({'success': False, 'error': 'Error de conexion a BD'}), 500
+
         cursor = conn.cursor(dictionary=True)
         cursor.execute("""
-            SELECT id, id_region, estado, nivel, probabilidad,
-                   casos_esperados, mensaje, recomendaciones,
-                   fecha_generacion, fecha_envio, estado_alerta
-            FROM alertas_epidemiologicas
-            WHERE estado_alerta IN ('activa', 'enviada')
-            ORDER BY
-                CASE nivel
-                    WHEN 'Crítico' THEN 1
-                    WHEN 'Alto' THEN 2
-                    WHEN 'Moderado' THEN 3
-                    ELSE 4
-                END,
-                fecha_generacion DESC
+            SELECT * FROM alertas
+            WHERE estado_alerta = 'activa'
+            ORDER BY fecha_generacion DESC
+            LIMIT 100
         """)
         alertas = cursor.fetchall()
 
+        # Serializar fechas
         for a in alertas:
-            if a.get('fecha_generacion'):
-                a['fecha_generacion'] = a['fecha_generacion'].isoformat()
-            if a.get('fecha_envio'):
-                a['fecha_envio'] = a['fecha_envio'].isoformat()
+            for key in ['fecha_generacion', 'fecha_resolucion']:
+                if a.get(key) and hasattr(a[key], 'strftime'):
+                    a[key] = a[key].strftime('%Y-%m-%d %H:%M:%S')
 
         return jsonify({
             'success': True,
             'alertas': alertas,
             'total': len(alertas)
-        })
+        }), 200
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
     finally:
-        cursor.close()
-        conn.close()
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 @alertas_bp.route('/historial', methods=['GET'])
 def get_historial_alertas():
-    """Obtiene el historial de alertas"""
-    conn = get_db_connection()
-    if not conn:
-        return jsonify({'error': 'Error de conexión'}), 500
-
+    """Historial completo de alertas."""
+    conn = None
     try:
+        conn = get_db_connection()
+        if conn is None:
+            return jsonify({'success': False, 'error': 'Error de conexion a BD'}), 500
+
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("""
-            SELECT id, id_region, estado, nivel, probabilidad,
-                   mensaje, estado_alerta, fecha_generacion,
-                   fecha_resolucion, resolucion
-            FROM alertas_epidemiologicas
-            ORDER BY fecha_generacion DESC LIMIT 100
-        """)
+        limit = request.args.get('limit', 200, type=int)
+        estado_filtro = request.args.get('estado')
+        nivel_filtro = request.args.get('nivel')
+
+        query = "SELECT * FROM alertas WHERE 1=1"
+        params = []
+
+        if estado_filtro:
+            query += " AND estado = %s"
+            params.append(estado_filtro)
+        if nivel_filtro:
+            query += " AND nivel = %s"
+            params.append(nivel_filtro)
+
+        query += " ORDER BY fecha_generacion DESC LIMIT %s"
+        params.append(limit)
+
+        cursor.execute(query, params)
         alertas = cursor.fetchall()
 
         for a in alertas:
-            if a.get('fecha_generacion'):
-                a['fecha_generacion'] = a['fecha_generacion'].isoformat()
-            if a.get('fecha_resolucion'):
-                a['fecha_resolucion'] = a['fecha_resolucion'].isoformat()
+            for key in ['fecha_generacion', 'fecha_resolucion']:
+                if a.get(key) and hasattr(a[key], 'strftime'):
+                    a[key] = a[key].strftime('%Y-%m-%d %H:%M:%S')
 
         return jsonify({
             'success': True,
             'alertas': alertas,
             'total': len(alertas)
-        })
+        }), 200
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
     finally:
-        cursor.close()
-        conn.close()
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
-@alertas_bp.route('/<int:alerta_id>/resolver', methods=['PUT'])
-def resolver_alerta(alerta_id):
-    """Marca una alerta como resuelta"""
-    conn = get_db_connection()
-    if not conn:
-        return jsonify({'error': 'Error de conexión'}), 500
-
+@alertas_bp.route('/<int:id_alerta>/resolver', methods=['PUT'])
+def resolver_alerta(id_alerta):
+    """Marcar alerta como resuelta."""
+    conn = None
     try:
         data = request.get_json() or {}
-        resolucion = data.get('resolucion', 'Alerta atendida')
+        resuelto_por = data.get('resuelto_por', 'sistema')
+        notas = data.get('notas', '')
+
+        conn = get_db_connection()
+        if conn is None:
+            return jsonify({'success': False, 'error': 'Error de conexion a BD'}), 500
 
         cursor = conn.cursor()
         cursor.execute("""
-            UPDATE alertas_epidemiologicas
+            UPDATE alertas
             SET estado_alerta = 'resuelta',
-                fecha_resolucion = NOW(),
-                resolucion = %s
+                resuelto_por = %s,
+                notas = %s,
+                fecha_resolucion = %s
             WHERE id = %s
-        """, (resolucion, alerta_id))
-
+        """, (resuelto_por, notas, datetime.now(), id_alerta))
         conn.commit()
+
+        if cursor.rowcount == 0:
+            return jsonify({'success': False, 'error': 'Alerta no encontrada'}), 404
 
         return jsonify({
             'success': True,
-            'mensaje': 'Alerta marcada como resuelta'
-        })
+            'mensaje': f'Alerta {id_alerta} resuelta'
+        }), 200
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'success': False, 'error': str(e)}), 500
     finally:
-        cursor.close()
-        conn.close()
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass

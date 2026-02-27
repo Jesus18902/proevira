@@ -217,7 +217,7 @@ const DashboardPredicciones = () => {
     const promedioProb = datosPrediccion.reduce((sum, p) => sum + (p.probabilidad || 0), 0) / datosPrediccion.length;
     const maxCasos = Math.max(...datosPrediccion.map(p => p.casos_estimados || 0));
     const alertas = datosPrediccion.filter(p =>
-      p.nivel_riesgo === 'Alto' || p.nivel_riesgo === 'Crítico'
+      p.nivel_riesgo === 'Alto' || p.nivel_riesgo === 'Crítico' || p.nivel_riesgo === 'Critico'
     ).length;
 
     return { totalCasos, promedioProb, maxCasos, alertas };
@@ -519,9 +519,10 @@ const DashboardPredicciones = () => {
                           <td className="px-4 py-3 text-center">
                             <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                               pred.nivel_riesgo === 'Bajo' ? 'bg-green-100 text-green-800' :
-                              pred.nivel_riesgo === 'Medio' ? 'bg-yellow-100 text-yellow-800' :
+                              pred.nivel_riesgo === 'Moderado' || pred.nivel_riesgo === 'Medio' ? 'bg-yellow-100 text-yellow-800' :
                               pred.nivel_riesgo === 'Alto' ? 'bg-orange-100 text-orange-800' :
-                              'bg-red-100 text-red-800'
+                              pred.nivel_riesgo === 'Crítico' || pred.nivel_riesgo === 'Critico' ? 'bg-red-100 text-red-800' :
+                              'bg-gray-100 text-gray-800'
                             }`}>
                               {pred.nivel_riesgo}
                             </span>

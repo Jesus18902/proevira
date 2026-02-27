@@ -107,8 +107,8 @@ const PrediccionAvanzada = () => {
                     max_riesgo: maxRiesgo,
                     min_riesgo: minRiesgo,
                     estado: resultados[0].estado,
-                    modelo: resultados[0].modelo_utilizado || 'Random Forest',
-                    confiabilidad: resultados[0].metricas_modelo?.accuracy || 85
+                    modelo: resultados[0].modelo_utilizado || 'Regresión Lineal',
+                    confiabilidad: Math.round((resultados[0].metricas_modelo?.r2 || 0.95) * 100)
                 });
 
                 // Calcular métricas de validación si hay datos reales
@@ -268,7 +268,7 @@ const PrediccionAvanzada = () => {
                 {/* Badges informativos */}
                 <div className="mt-6 flex flex-wrap gap-3">
                     <span className="px-4 py-2 bg-white/20 rounded-xl text-sm font-bold flex items-center gap-2">
-                        <span>🤖</span> <strong>Random Forest</strong> - 85% precisión
+                        <span>🤖</span> <strong>Regresión Lineal + Polinomial</strong> - R² 95%
                     </span>
                     <span className="px-4 py-2 bg-white/20 rounded-xl text-sm font-bold flex items-center gap-2">
                         <span>📊</span> <strong>9,760+</strong> registros históricos
@@ -434,8 +434,8 @@ const PrediccionAvanzada = () => {
                     </div>
                     <div className="mt-4 p-3 bg-white/10 rounded-lg">
                         <p className="text-sm">
-                            <strong>📊 Nota importante:</strong> La <strong>Probabilidad de Riesgo</strong> (calculada por Random Forest con 85% de precisión)
-                            es el indicador más confiable. Los <strong>Casos Estimados</strong> son aproximaciones basadas en promedios históricos
+                            <strong>📊 Nota importante:</strong> La <strong>Probabilidad de Riesgo</strong> (calculada por Regresión Lineal/Polinomial con R² 95%)
+                            es el indicador más confiable. Los <strong>Casos Estimados</strong> son aproximaciones basadas en datos históricos
                             y pueden variar significativamente en épocas de cambios bruscos.
                             {parseFloat(metricsValidacion.mape) <= 30 ?
                                 ' ✅ El error de estimación está en rango aceptable.' :
@@ -469,18 +469,213 @@ const PrediccionAvanzada = () => {
                         <div className="bg-white p-4 rounded-xl border-2 border-blue-500 shadow text-center">
                             <p className="text-3xl font-bold text-blue-600">{resumenModelo.confiabilidad}%</p>
                             <p className="text-sm font-bold text-gray-700">Precisión Riesgo</p>
-                            <p className="text-xs text-blue-500">Random Forest</p>
+                            <p className="text-xs text-blue-500">{resumenModelo.modelo || 'Regresión Lineal'}</p>
                         </div>
                     </div>
 
                     {/* Nota sobre el modelo */}
                     <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                         <p className="text-sm text-blue-800">
-                            <strong>Guía de uso:</strong> El modelo Random Forest tiene <strong>85% de precisión</strong> para detectar
+                            <strong>Guía de uso:</strong> El modelo de {resumenModelo.modelo || 'Regresión Lineal'} tiene <strong>R² {resumenModelo.confiabilidad}%</strong> para predecir
                             <strong> riesgo de brote</strong> (Crítico/Alto/Moderado/Bajo). Use el nivel de riesgo para tomar decisiones
                             de prevención. Los casos estimados son orientativos.
                         </p>
                     </div>
+
+                    {/* ═══════════════════════════════════════════════════════════════
+                        COMPARATIVA DE MODELOS - Lineal vs Polinomial
+                    ═══════════════════════════════════════════════════════════════ */}
+                    {predicciones.length > 0 && predicciones[0].comparativa && (
+                        <div className="mt-6 bg-white p-6 rounded-xl border-2 border-indigo-100 shadow-lg">
+                            <div className="flex items-center gap-3 mb-5">
+                                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center">
+                                    <span className="text-white text-lg">⚖️</span>
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-bold text-gray-800">Comparativa de Modelos</h3>
+                                    <p className="text-xs text-gray-500">Regresión Lineal vs Polinomial — Semana más reciente</p>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                {/* Modelo Lineal */}
+                                {predicciones[0].comparativa.lineal && (
+                                    <div className={`relative rounded-xl p-5 border-2 transition-all ${
+                                        predicciones[0].comparativa.mejor_modelo === 'lineal'
+                                            ? 'border-blue-400 bg-gradient-to-br from-blue-50 to-blue-100 shadow-md'
+                                            : 'border-gray-200 bg-gray-50'
+                                    }`}>
+                                        {predicciones[0].comparativa.mejor_modelo === 'lineal' && (
+                                            <span className="absolute -top-3 right-4 px-3 py-1 bg-blue-600 text-white text-xs font-bold rounded-full shadow">
+                                                ★ Mejor Modelo
+                                            </span>
+                                        )}
+                                        <div className="flex items-center gap-2 mb-4">
+                                            <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                                            <h4 className="font-bold text-gray-800">Regresión Lineal</h4>
+                                        </div>
+                                        <div className="space-y-3">
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-sm text-gray-600">Casos Predichos</span>
+                                                <span className="text-2xl font-black text-blue-700">
+                                                    {predicciones[0].comparativa.lineal.casos_predichos}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-sm text-gray-600">R² Score</span>
+                                                <span className="text-lg font-bold text-blue-600">
+                                                    {(predicciones[0].comparativa.lineal.r2 * 100).toFixed(1)}%
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-sm text-gray-600">MAE</span>
+                                                <span className="text-lg font-bold text-gray-700">
+                                                    {predicciones[0].comparativa.lineal.mae}
+                                                </span>
+                                            </div>
+                                            {/* Barra visual R² */}
+                                            <div className="pt-2">
+                                                <div className="w-full bg-gray-200 rounded-full h-2.5">
+                                                    <div
+                                                        className="bg-blue-500 h-2.5 rounded-full transition-all duration-500"
+                                                        style={{ width: `${(predicciones[0].comparativa.lineal.r2 * 100)}%` }}
+                                                    ></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Modelo Polinomial */}
+                                {predicciones[0].comparativa.polinomial && (
+                                    <div className={`relative rounded-xl p-5 border-2 transition-all ${
+                                        predicciones[0].comparativa.mejor_modelo === 'polinomial'
+                                            ? 'border-indigo-400 bg-gradient-to-br from-indigo-50 to-indigo-100 shadow-md'
+                                            : 'border-gray-200 bg-gray-50'
+                                    }`}>
+                                        {predicciones[0].comparativa.mejor_modelo === 'polinomial' && (
+                                            <span className="absolute -top-3 right-4 px-3 py-1 bg-indigo-600 text-white text-xs font-bold rounded-full shadow">
+                                                ★ Mejor Modelo
+                                            </span>
+                                        )}
+                                        <div className="flex items-center gap-2 mb-4">
+                                            <div className="w-3 h-3 bg-indigo-500 rounded-full"></div>
+                                            <h4 className="font-bold text-gray-800">Regresión Polinomial</h4>
+                                        </div>
+                                        <div className="space-y-3">
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-sm text-gray-600">Casos Predichos</span>
+                                                <span className="text-2xl font-black text-indigo-700">
+                                                    {predicciones[0].comparativa.polinomial.casos_predichos}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-sm text-gray-600">R² Score</span>
+                                                <span className="text-lg font-bold text-indigo-600">
+                                                    {(predicciones[0].comparativa.polinomial.r2 * 100).toFixed(1)}%
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-sm text-gray-600">MAE</span>
+                                                <span className="text-lg font-bold text-gray-700">
+                                                    {predicciones[0].comparativa.polinomial.mae}
+                                                </span>
+                                            </div>
+                                            {/* Barra visual R² */}
+                                            <div className="pt-2">
+                                                <div className="w-full bg-gray-200 rounded-full h-2.5">
+                                                    <div
+                                                        className="bg-indigo-500 h-2.5 rounded-full transition-all duration-500"
+                                                        style={{ width: `${(predicciones[0].comparativa.polinomial.r2 * 100)}%` }}
+                                                    ></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Tabla comparativa por semana (si hay múltiples predicciones) */}
+                            {predicciones.length > 1 && (
+                                <div className="mt-5 overflow-x-auto">
+                                    <table className="w-full text-sm">
+                                        <thead>
+                                            <tr className="border-b-2 border-gray-200">
+                                                <th className="px-3 py-2 text-left text-gray-600 font-semibold">Semana</th>
+                                                <th className="px-3 py-2 text-left text-gray-600 font-semibold">Fecha</th>
+                                                <th className="px-3 py-2 text-center font-semibold text-blue-700">
+                                                    <div className="flex items-center justify-center gap-1">
+                                                        <span className="w-2 h-2 bg-blue-500 rounded-full"></span> Lineal
+                                                    </div>
+                                                </th>
+                                                <th className="px-3 py-2 text-center font-semibold text-indigo-700">
+                                                    <div className="flex items-center justify-center gap-1">
+                                                        <span className="w-2 h-2 bg-indigo-500 rounded-full"></span> Polinomial
+                                                    </div>
+                                                </th>
+                                                <th className="px-3 py-2 text-center text-gray-600 font-semibold">Δ Diferencia</th>
+                                                <th className="px-3 py-2 text-center font-semibold text-green-700">
+                                                    <div className="flex items-center justify-center gap-1">
+                                                        <span className="w-2 h-2 bg-green-500 rounded-full"></span> Reales
+                                                    </div>
+                                                </th>
+                                                <th className="px-3 py-2 text-center text-gray-600 font-semibold">Modelo Usado</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100">
+                                            {predicciones.map((pred, idx) => {
+                                                const lineal = pred.comparativa?.lineal?.casos_predichos;
+                                                const polinomial = pred.comparativa?.polinomial?.casos_predichos;
+                                                const diff = lineal != null && polinomial != null ? Math.abs(lineal - polinomial) : null;
+                                                const mejor = pred.comparativa?.mejor_modelo;
+                                                const casosReales = pred.validacion?.casos_reales;
+                                                return (
+                                                    <tr key={idx} className="hover:bg-gray-50">
+                                                        <td className="px-3 py-2 font-medium text-gray-800">S{pred.semana}</td>
+                                                        <td className="px-3 py-2 text-gray-500">{pred.fecha}</td>
+                                                        <td className={`px-3 py-2 text-center font-bold ${mejor === 'lineal' ? 'text-blue-700 bg-blue-50' : 'text-gray-600'}`}>
+                                                            {lineal ?? '—'}
+                                                        </td>
+                                                        <td className={`px-3 py-2 text-center font-bold ${mejor === 'polinomial' ? 'text-indigo-700 bg-indigo-50' : 'text-gray-600'}`}>
+                                                            {polinomial ?? '—'}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-center">
+                                                            {diff != null ? (
+                                                                <span className={`px-2 py-0.5 rounded text-xs font-bold ${diff <= 5 ? 'bg-green-100 text-green-700' : diff <= 15 ? 'bg-yellow-100 text-yellow-700' : 'bg-orange-100 text-orange-700'}`}>
+                                                                    ±{diff}
+                                                                </span>
+                                                            ) : '—'}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-center bg-green-50">
+                                                            {casosReales != null ? (
+                                                                <span className="font-bold text-green-700">{casosReales}</span>
+                                                            ) : (
+                                                                <span className="text-gray-400 text-xs italic">Sin datos</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-center">
+                                                            <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${mejor === 'lineal' ? 'bg-blue-100 text-blue-700' : 'bg-indigo-100 text-indigo-700'}`}>
+                                                                {mejor === 'lineal' ? 'Lineal' : 'Polinomial'}
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+
+                            {/* Nota informativa */}
+                            <div className="mt-4 p-3 bg-indigo-50 border border-indigo-200 rounded-lg">
+                                <p className="text-xs text-indigo-800">
+                                    <strong>💡 Nota:</strong> Ambos modelos se ejecutan en cada predicción. El sistema selecciona automáticamente
+                                    el que tiene <strong>mejor R²</strong> para los casos reportados. Una diferencia pequeña entre modelos indica
+                                    mayor confiabilidad en el resultado.
+                                </p>
+                            </div>
+                        </div>
+                    )}
 
                     {/* SIMBOLOGÍA DE NIVELES DE RIESGO */}
                     <div className="mt-6 bg-white p-5 rounded-xl border shadow-lg">

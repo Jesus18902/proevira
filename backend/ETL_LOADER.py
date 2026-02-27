@@ -76,7 +76,20 @@ def process_data(archivo_nombres):
 
     df_consolidado = pd.concat(df_list, ignore_index=True)
     df = df_consolidado.copy()
-    df['FECHA_SIGN_SINTOMAS'] = pd.to_datetime(df['FECHA_SIGN_SINTOMAS'], errors='coerce')
+
+    # Intentar parseo estándar (YYYY-MM-DD)
+    fechas = pd.to_datetime(df['FECHA_SIGN_SINTOMAS'], errors='coerce')
+    # Fechas que fallaron (NaT) → reintentar con formato DD/MM/YYYY (usado en 2024)
+    mask_nat = fechas.isna() & df['FECHA_SIGN_SINTOMAS'].notna()
+    if mask_nat.any():
+        fechas_retry = pd.to_datetime(
+            df.loc[mask_nat, 'FECHA_SIGN_SINTOMAS'],
+            format='%d/%m/%Y', errors='coerce'
+        )
+        fechas.loc[mask_nat] = fechas_retry
+        print(f"📅 Fechas re-parseadas con formato DD/MM/YYYY: {fechas_retry.notna().sum()} de {mask_nat.sum()}")
+
+    df['FECHA_SIGN_SINTOMAS'] = fechas
     df.dropna(subset=['FECHA_SIGN_SINTOMAS'], inplace=True)
     df_confirmados = df[df['ESTATUS_CASO'] == 1].copy()
 
