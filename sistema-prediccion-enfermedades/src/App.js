@@ -3,12 +3,10 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import './styles/globals.css';
 
 // Layout
-import Layout from './components/layout/Layout';
 import Sidebar from './components/layout/Sidebar';
 
 // Pages
 import Login from './pages/Login';
-import ModelosPredictivos from './pages/ModelosPredictivos';
 import Reportes from './pages/Reportes';
 import Configuracion from './pages/Configuracion';
 import Alertas from './pages/Alertas';

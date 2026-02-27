@@ -5,7 +5,7 @@
 USER=${1:-root}
 PASSWORD=${2:-admin}
 DB_NAME="proyecto_integrador"
-SCHEMA_FILE="../database_schema_completo.sql"
+SCHEMA_FILE="../database_schema.sql"
 
 echo "🦟 ProeVira - Configuración de Base de Datos"
 echo "=============================================="

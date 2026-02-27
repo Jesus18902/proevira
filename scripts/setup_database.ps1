@@ -5,7 +5,7 @@ param(
     [string]$User = "root",
     [string]$Password = "admin",
     [string]$DbName = "proyecto_integrador",
-    [string]$SchemaFile = "..\database_schema_completo.sql"
+    [string]$SchemaFile = "..\database_schema.sql"
 )
 
 Write-Host "🦟 ProeVira - Configuración de Base de Datos" -ForegroundColor Cyan

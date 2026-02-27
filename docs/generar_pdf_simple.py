@@ -229,12 +229,12 @@ def main():
     story.append(Paragraph("Opción A: Usando MySQL Workbench", styles['H3']))
     story.append(Paragraph("1. Abrir MySQL Workbench", styles['Normal2']))
     story.append(Paragraph("2. Conectarse al servidor local", styles['Normal2']))
-    story.append(Paragraph("3. Abrir el archivo database_schema_completo.sql", styles['Normal2']))
+    story.append(Paragraph("3. Abrir el archivo database_schema.sql", styles['Normal2']))
     story.append(Paragraph("4. Ejecutar el script completo (Ctrl+Shift+Enter)", styles['Normal2']))
     
     story.append(Paragraph("Opción B: Usando línea de comandos", styles['H3']))
     story.append(Paragraph("mysql -u root -p", styles['Codigo']))
-    story.append(Paragraph("source C:/ruta/al/proyecto/ProeVira/database_schema_completo.sql", styles['Codigo']))
+    story.append(Paragraph("source C:/ruta/al/proyecto/ProeVira/database_schema.sql", styles['Codigo']))
 
     # === SECCIÓN 4: BACKEND ===
     story.append(Paragraph("4. Instalación del Backend (Flask/Python)", styles['H1']))
@@ -334,7 +334,7 @@ def main():
     story.append(Paragraph("cd ProeVira", styles['Codigo']))
     story.append(Spacer(1, 0.3*cm))
     story.append(Paragraph("# 2. Crear base de datos (en MySQL)", styles['Codigo']))
-    story.append(Paragraph("mysql -u root -p < database_schema_completo.sql", styles['Codigo']))
+    story.append(Paragraph("mysql -u root -p < database_schema.sql", styles['Codigo']))
     story.append(Spacer(1, 0.3*cm))
     story.append(Paragraph("# 3. Configurar Backend", styles['Codigo']))
     story.append(Paragraph("cd backend", styles['Codigo']))

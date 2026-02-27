@@ -13,5 +13,9 @@ pandas>=2.0.0
 numpy>=1.24.0
 joblib>=1.3.0
 
+# Seguridad y Autenticación
+bcrypt>=4.0.0
+
 # Utilidades
 python-dotenv>=1.0.0
+werkzeug>=2.3.0

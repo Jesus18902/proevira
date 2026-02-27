@@ -132,7 +132,7 @@ cd ProeVira
 
 1. Abrir MySQL Workbench
 2. Conectarse al servidor local
-3. Abrir el archivo `database_schema_completo.sql`
+3. Abrir el archivo `database_schema.sql`
 4. Ejecutar el script completo (Ctrl+Shift+Enter)
 
 **Opción B: Usando línea de comandos**
@@ -142,7 +142,7 @@ cd ProeVira
 mysql -u root -p
 
 # Una vez dentro de MySQL, ejecutar:
-source C:/ruta/al/proyecto/ProeVira/database_schema_completo.sql
+source C:/ruta/al/proyecto/ProeVira/database_schema.sql
 ```
 
 ### 3.3 Verificar la Creación
@@ -534,7 +534,7 @@ git clone https://github.com/SergioPorrasA/ProeVira.git
 cd ProeVira
 
 # 2. Crear base de datos (en MySQL)
-mysql -u root -p < database_schema_completo.sql
+mysql -u root -p < database_schema.sql
 
 # 3. Configurar Backend
 cd backend

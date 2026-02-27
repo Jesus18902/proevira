@@ -23,7 +23,7 @@ DATA_DIR = os.path.join(PROJECT_DIR, 'data')
 DB_CONFIG = {
     'host': os.getenv('DB_HOST', '127.0.0.1'),
     'user': os.getenv('DB_USER', 'root'),
-    'password': os.getenv('DB_PASSWORD', ''),
+    'password': os.getenv('DB_PASSWORD', '1234567'),  # CORREGIDO: mismo default que app.py
     'database': os.getenv('DB_NAME', 'proyecto_integrador')
 }
 
